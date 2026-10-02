@@ -10,7 +10,8 @@
     "start": "node scripts/serve.js",
     "test": "node --test --test-isolation=none tests/engine.test.js",
     "test:e2e": "playwright test",
-    "check": "npm test && npm run test:e2e"
+    "test:server": "python3 -m unittest discover -s tests/server",
+    "check": "npm test && npm run test:server && npm run test:e2e"
   },
   "devDependencies": { "@playwright/test": "^1.58.2" }
 }

@@ -4,18 +4,28 @@
 
 ## 실행
 
-Node.js 24 LTS 권장, 22.8 이상 지원. 런타임 패키지 의존성과 백엔드·DB는 없습니다.
+### 패키징된 실행 파일
+
+운영체제별 실행 파일은 GitHub Actions의 **Package executable** 워크플로에서 생성합니다. 성공한 빌드의 **Artifacts → SecurityLab-운영체제-아키텍처**를 다운로드하고 압축을 풉니다. Windows에서는 `SecurityLab.exe`를 더블클릭하면 게임이 브라우저에서 자동으로 열립니다. Python·Node.js·npm을 설치할 필요가 없습니다.
+
+실행 창의 **Open game**으로 브라우저를 다시 열 수 있고, **Quit** 또는 실행 창 닫기로 게임 서버를 종료합니다. 파일 하나에 Python 런타임과 게임 파일이 포함되어 있어 첫 실행 시 압축 해제 시간이 필요할 수 있습니다. 진행은 기존처럼 브라우저에 저장됩니다.
+
+### 원본 코드로 실행
+
+**Python 3.9 이상과 브라우저만 있으면 실행할 수 있습니다.** Node.js·npm·pip 또는 별도 패키지 설치는 필요 없습니다.
+
+GitHub의 **Code → Download ZIP**으로 내려받고 압축을 풉니다. Windows는 프로젝트 폴더의 `run.bat`을 더블클릭합니다. macOS·Linux는 터미널에서 프로젝트 폴더로 이동해 실행합니다.
 
 ```sh
-git clone https://github.com/nu4ddi4/security-lab-game.git
 cd security-lab-game
-npm ci
-npm run dev
+python3 run.py
 ```
 
 브라우저에서 **http://localhost:5173**을 엽니다. `file://`로 직접 열지 마세요. 실행 중 게임 입력을 외부로 전송하지 않습니다. 개발 서버는 `127.0.0.1`에만 바인딩하며 게임 정적 파일만 제공합니다. 종료는 `Ctrl+C`입니다.
 
-개발 도구 설치 없이 실행만 하려면 Node.js 설치 후 `npm run dev`만 실행해도 됩니다. `.nvmrc`, `.editorconfig`, VS Code 확장 추천을 포함합니다.
+Windows 터미널에서는 `py -3 run.py` 또는 `python run.py`로 실행할 수도 있습니다. 포트가 사용 중이면 `python3 run.py --port 5174`로 실행하고 표시된 주소를 엽니다. Python이 설치되어 있어야 합니다.
+
+Node.js를 이미 사용하는 개발자는 패키지 설치 없이 `node scripts/serve.js`로 실행할 수도 있습니다. `.nvmrc`, `.editorconfig`, VS Code 확장 추천을 포함합니다.
 
 ## 구현된 미션
 
@@ -30,12 +40,17 @@ npm run dev
 
 ## 개발과 검증
 
+게임 실행과 별도로 자동 브라우저 테스트 도구를 설치하는 개발자용 절차입니다. Node.js 24 LTS 권장, 22.8 이상 지원.
+
 ```sh
+npm ci
 npm test
 npx playwright install chromium
 npm run test:e2e
 npm run check
 ```
+
+Python 서버만 검증하려면 패키지 설치 없이 `python3 -m unittest discover -s tests/server`를 실행합니다.
 
 Linux에서 브라우저 시스템 라이브러리가 부족하면 `npx playwright install --with-deps chromium`을 사용합니다. GitHub Actions에도 같은 검증을 구성했습니다.
 
@@ -44,6 +59,7 @@ Linux에서 브라우저 시스템 라이브러리가 부족하면 `npx playwrig
 - `src/storage.js`: 진행 저장, 저장 구조 검사, 완료 조건 재판정
 - `src/app.js`, `src/style.css`: 한국어 UI, 탭, 키보드 조작, 반응형 화면
 - `tests/`: 핵심 상태 전이 및 PC·모바일 브라우저 테스트
+- `run.py`, `run.bat`, `run.sh`: 패키지 설치 없는 Python 실행과 OS별 실행 파일
 - `docs/PLAN.md`: 제공받은 원본 계획서
 - `docs/ROADMAP.md`, `docs/VALIDATION.md`: 후속 일정, 검증 기록 및 한계
 
