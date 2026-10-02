@@ -47,7 +47,7 @@ p { line-height: 1.75; }
 #mission-subtitle { color: var(--muted); font-size: 12px; margin: 0; }
 .badge { border: 1px solid #3c615c; border-radius: 5px; color: var(--accent); background: #19342e; font-size: 10px; padding: 6px 9px; white-space: nowrap; }
 .boundary { color: #a7bbcc; background: #172434; border: 1px solid #253a4e; margin: 0 25px 21px; padding: 10px 13px; border-radius: 5px; font-size: 11px; }
-.tabs { display: flex; padding: 0 25px; border-bottom: 1px solid var(--line); gap: 21px; }
+.tabs { display: flex; flex-wrap: wrap; padding: 0 25px; border-bottom: 1px solid var(--line); gap: 16px; }
 .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px 0; color: var(--muted); font-size: 12px; }
 .tabs button[aria-selected=true] { color: var(--accent); border-bottom-color: var(--accent); }
 #panel-terminal { background: #0c1420; }
@@ -76,7 +76,15 @@ input[type=radio], input[type=checkbox] { accent-color: var(--accent); flex-shri
 .muted { color: var(--muted); font-size: 11px; }
 .mission-panel > .muted { line-height: 1.9; }
 .mission-panel > button { width: 100%; margin-top: 10px; font-size: 12px; }
-.settings, .files { padding: 24px; min-height: 445px; }
+.settings, .files, .comparison { padding: 24px; min-height: 445px; }
+.answer-feedback { margin: -10px 0 20px; padding: 12px; border-left: 2px solid currentColor; background: #172434; font-size: 12px; line-height: 1.8; }
+.comparison > h3:first-child { margin-top: 0; }
+.comparison > p { line-height: 1.8; }
+.comparison table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; line-height: 1.7; }
+.comparison caption { text-align: left; margin: 18px 0 10px; color: var(--muted); }
+.comparison th, .comparison td { text-align: left; vertical-align: top; padding: 12px 8px; border: 1px solid var(--line); overflow-wrap: anywhere; }
+.comparison thead th { color: var(--accent); background: #172434; }
+.comparison tbody th { font-weight: 500; }
 .settings > h3:first-child { margin-top: 0; }
 .settings > button { display: block; margin-top: 12px; }
 .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 20px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
