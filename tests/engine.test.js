@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission, score, sha256, accepted, loginSimulation } from '../src/engine.js';
-import { ORIGINAL_FILES } from '../src/missions.js';
+import { initialState, progress, runCommand, answerFeedback, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission, score, sha256, accepted, loginSimulation } from '../src/engine.js';
+import { MISSIONS, ORIGINAL_FILES } from '../src/missions.js';
 import { loadGame, saveGame, SAVE_KEY } from '../src/storage.js';
 
 async function tutorial(state) {
@@ -221,4 +221,128 @@ test('미충족 검사 뒤 새 단서와 해시 재계산을 얻으면 이전 �
   await runCommand(state, 'hash files'); assert.deepEqual(progress(state).checks, []);
   assert.equal(progress(state).verified, false);
   await runCommand(state, 'verify'); assert.equal(progress(state).verified, true);
+});
+
+test('포트 관찰은 조사 당시 값을 보존하고 새 설정에는 재조사가 필요함', async () => {
+  const state = initialState(); await tutorial(state);
+  assert.deepEqual(progress(state).observations, { changed: false, before: null, after: null });
+  await runCommand(state, 'scan club-server');
+  const before = { 443: true, 8080: true };
+  assert.deepEqual(progress(state).observations.before, before);
+  applyAnswer(state, 1); assert.equal(progress(state).observations.changed, false);
+  applyPort(state, 8080, false);
+  assert.deepEqual(progress(state).observations.before, before); assert.equal(progress(state).observations.after, null);
+  await runCommand(state, 'scan club-server');
+  assert.deepEqual(progress(state).observations.after, { 443: true, 8080: false });
+  applyPort(state, 443, false); assert.equal(progress(state).observations.after, null);
+  await runCommand(state, 'scan club-server');
+  assert.deepEqual(progress(state).observations.after, { 443: false, 8080: false });
+  assert.deepEqual(progress(state).observations.before, before);
+  resetMission(state); assert.deepEqual(progress(state).observations, { changed: false, before: null, after: null });
+});
+
+test('로그인 비교는 길이만 변경한 결과와 흔한 값·시도 제한을 구분함', async () => {
+  const state = initialState(); await tutorial(state); await services(state);
+  await runCommand(state, 'inspect login');
+  const before = { minLength: 6, blockCommon: false, limitAttempts: false };
+  assert.deepEqual(progress(state).observations.before, before);
+  applyLogin(state, { ...state.login, minLength: 15 });
+  assert.equal(progress(state).observations.after, null);
+  await runCommand(state, 'inspect login');
+  assert.equal(accepted('school-club-password', progress(state).observations.after), true);
+  assert.equal(loginSimulation(progress(state).observations.after).repeatedBlocked, false);
+  applyLogin(state, { minLength: 15, blockCommon: true, limitAttempts: true });
+  applyAnswer(state, 2); await runCommand(state, 'verify');
+  assert.equal(accepted('school-club-password', progress(state).observations.after), false);
+  assert.equal(loginSimulation(progress(state).observations.after).normal, true);
+  assert.equal(loginSimulation(progress(state).observations.after).repeatedBlocked, true);
+  assert.deepEqual(progress(state).observations.before, before);
+});
+
+test('파일 비교는 복구 뒤 새 해시 계산 전까지 변경 후 결과를 만들지 않음', async () => {
+  const state = initialState(); await tutorial(state); await services(state); await login(state);
+  await runCommand(state, 'inspect baseline'); await runCommand(state, 'hash files'); applyAnswer(state, 1);
+  const before = structuredClone(progress(state).observations.before);
+  assert.equal(before.matches['budget.csv'], false);
+  restoreFile(state, 'budget.csv'); await runCommand(state, 'verify');
+  assert.equal(progress(state).observations.after, null);
+  const storage = memoryStorage(); saveGame(state, storage);
+  const loaded = await loadGame(storage);
+  assert.equal(loaded.recovered, false); assert.equal(progress(loaded.state).observations.after, null);
+  assert.deepEqual(progress(loaded.state).observations.before, before);
+  await runCommand(loaded.state, 'hash files');
+  assert.ok(Object.values(progress(loaded.state).observations.after.matches).every(Boolean));
+  assert.equal(progress(loaded.state).verified, false);
+});
+
+test('전후 기록은 저장·복원되고 기록 없는 기존 v1 저장도 읽음', async () => {
+  const state = initialState(); await tutorial(state); await services(state); await login(state); await integrity(state);
+  const storage = memoryStorage(); saveGame(state, storage);
+  const loaded = await loadGame(storage);
+  assert.equal(loaded.recovered, false);
+  assert.deepEqual(loaded.state.missions.map(p => p.observations), state.missions.map(p => p.observations));
+  const legacy = JSON.parse(storage.getItem(SAVE_KEY));
+  legacy.missions.forEach(p => { delete p.observations; });
+  storage.setItem(SAVE_KEY, JSON.stringify(legacy));
+  const old = await loadGame(storage);
+  assert.equal(old.recovered, false); assert.ok(old.state.missions.every(p => p.verified));
+  assert.ok(old.state.missions.every(p => p.observations.before === null));
+  assert.deepEqual(old.state.missions[1].observations.after, { 443: true, 8080: false });
+});
+
+test('선택 관찰 기록이 손상되어도 정상 진행은 보존함', async () => {
+  const state = initialState(); await tutorial(state);
+  const storage = memoryStorage(); saveGame(state, storage);
+  const data = JSON.parse(storage.getItem(SAVE_KEY));
+  data.missions[1].observations = { changed: false, before: { 443: 'true', 8080: true }, after: [] };
+  storage.setItem(SAVE_KEY, JSON.stringify(data));
+  const loaded = await loadGame(storage);
+  assert.equal(loaded.recovered, false); assert.equal(loaded.state.active, 1);
+  assert.equal(loaded.state.missions[0].verified, true);
+  assert.equal(progress(loaded.state).observations.before, null);
+  assert.equal(progress(loaded.state).observations.after, null);
+});
+
+test('조사 전 정답 선택도 근거 확인을 안내하고 완료를 대신하지 않음', async () => {
+  for (const [index, commands] of [[0, ['help', 'inspect approval']], [1, ['scan club-server', 'inspect club-server 8080']], [2, ['inspect login']], [3, ['inspect baseline', 'hash files']]]) {
+    const state = initialState(); state.active = index;
+    assert.equal(answerFeedback(state), null);
+    applyAnswer(state, MISSIONS[index].correct);
+    assert.equal(answerFeedback(state).status, 'investigate');
+    for (const command of commands) await runCommand(state, command);
+    assert.equal(answerFeedback(state).status, 'supported');
+    assert.equal(progress(state).verified, false);
+  }
+});
+
+test('오답마다 오해한 개념과 확인할 근거를 안내하며 상태를 바꾸지 않음', async () => {
+  const completed = initialState(); await tutorial(completed); await services(completed); await login(completed); await integrity(completed);
+  for (const [index, answer, concept] of [[0, 1, /조사 권한/], [0, 2, /승인이 먼저/], [1, 0, /열린 포트만으로/], [1, 2, /HTTPS 서비스의 존재/], [2, 0, /password!/], [2, 1, /반복 로그인/], [3, 0, /악성 여부/], [3, 2, /신원을 인증/]]) {
+    const state = structuredClone(completed); state.active = index; applyAnswer(state, answer);
+    const before = structuredClone(state), feedback = answerFeedback(state);
+    assert.equal(feedback.status, 'reconsider'); assert.match(feedback.text, concept);
+    assert.deepEqual(state, before);
+    assert.equal(await runCommand(state, 'verify'), feedback.text);
+    assert.equal(progress(state).verified, false); assert.equal(nextMission(state), false);
+  }
+});
+
+test('관찰 기록만으로 조사·정상 기능·해시 재검증 조건을 생략할 수 없음', async () => {
+  const state = initialState(); await tutorial(state);
+  applyPort(state, 8080, false); applyAnswer(state, 1);
+  progress(state).observations = { changed: true, before: { 443: true, 8080: true }, after: { 443: true, 8080: false } };
+  await runCommand(state, 'verify');
+  assert.equal(progress(state).verified, false);
+  assert.ok(progress(state).checks.some(check => check.label === '서비스 단서 조사' && !check.passed));
+  assert.ok(progress(state).checks.some(check => check.label === '방어 후 다시 scan' && !check.passed));
+});
+
+test('완료한 미션의 피드백은 재작업 대신 완료 결과를 안내함', async () => {
+  const state = initialState(); await tutorial(state); await services(state); await login(state); await integrity(state);
+  for (let index = 0; index < MISSIONS.length; index++) {
+    state.active = index;
+    const before = structuredClone(state), feedback = answerFeedback(state);
+    assert.equal(feedback.status, 'supported'); assert.match(feedback.text, /미션을 완료했습니다/);
+    assert.deepEqual(state, before);
+  }
 });

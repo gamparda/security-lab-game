@@ -31,6 +31,7 @@
             <button id="tab-terminal" role="tab" aria-selected="true" aria-controls="panel-terminal" data-tab="terminal">가상 터미널</button>
             <button id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" data-tab="settings" tabindex="-1">방어 설정</button>
             <button id="tab-files" role="tab" aria-selected="false" aria-controls="panel-files" data-tab="files" tabindex="-1">파일 비교</button>
+            <button id="tab-comparison" role="tab" aria-selected="false" aria-controls="panel-comparison" data-tab="comparison" tabindex="-1">전후 비교</button>
           </div>
           <div id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal">
             <div class="terminal-meta"><span>club-server : sandbox</span><span>GAME COMMANDS ONLY</span></div>
@@ -40,11 +41,13 @@
           </div>
           <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><div id="settings" class="settings"></div></div>
           <div id="panel-files" role="tabpanel" aria-labelledby="tab-files" hidden><div id="files" class="files"></div></div>
+          <div id="panel-comparison" role="tabpanel" aria-labelledby="tab-comparison" hidden><div id="comparison" class="comparison"></div></div>
         </section>
         <aside class="mission-panel">
           <p class="eyebrow">MISSION BRIEF</p><h2>조사 노트</h2><p id="objective"></p>
           <h3>확보한 단서</h3><ul id="clues" class="clues"></ul>
           <fieldset id="answers"><legend id="answer-label">원인 설명 선택</legend></fieldset>
+          <p id="answer-feedback" class="answer-feedback" role="status" hidden></p>
           <div class="score-line"><span>학습 피드백</span><strong id="score"></strong></div><p class="muted">단서 30 · 설명 20 · 방어 30 · 재검증 20<br>힌트 감점 없음 · 보안 역량 인증 점수 아님</p>
           <button id="verify" class="primary">현재 상태 재검증</button>
           <button id="next" class="primary" hidden>다음 미션 →</button>

@@ -129,6 +129,9 @@ test('해시 복원 실패 안내 후 저장을 유지하고 재계산·재검�
   await expect(page.locator('.mission-step.complete')).toHaveCount(3);
   await expect(page.locator('#results')).toBeHidden();
   await expect(page.locator('#hint')).toHaveText('힌트 보기 (2/3)');
+  await page.getByRole('tab', { name: '전후 비교' }).click();
+  await expect(page.locator('#comparison').getByRole('row', { name: /budget.csv/ }).locator('td').nth(0)).toHaveText('변경 감지');
+  await expect(page.locator('#comparison').getByRole('row', { name: /budget.csv/ }).locator('td').nth(1)).toHaveText('다시 조사 필요');
   await page.locator('#hint').click();
   await page.reload();
   await expect(page.locator('#notice')).toContainText('해시 계산을 완료하지 못했습니다');
@@ -248,4 +251,104 @@ test('설명·포트·파일 변경 후 이전 통과 결과를 지우고 재검
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'hash files'); await command(page, 'verify');
   await expect(page.locator('#results')).toBeVisible();
+});
+
+test('포트 전후 비교는 정상 서비스와 과도한 차단을 구분하고 저장·초기화됨', async ({ page }) => {
+  await seedGame(page, await missionState(1));
+  await page.getByRole('tab', { name: '전후 비교' }).click();
+  const service = page.locator('#comparison').getByRole('row', { name: /443 자료 서비스/ });
+  const admin = page.locator('#comparison').getByRole('row', { name: /8080 관리 서비스/ });
+  await expect(service.locator('td').nth(0)).toHaveText('조사 기록 없음');
+  await page.getByRole('tab', { name: '가상 터미널' }).click();
+  await command(page, 'scan club-server'); await command(page, 'inspect club-server 8080');
+  await page.locator('#answer-1').check();
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.locator('#port-8080').selectOption('block');
+  await page.getByRole('tab', { name: '전후 비교' }).click();
+  await expect(admin.locator('td').nth(0)).toHaveText('접근 허용');
+  await expect(admin.locator('td').nth(1)).toHaveText('다시 조사 필요');
+  await page.getByRole('tab', { name: '가상 터미널' }).click();
+  await command(page, 'scan club-server'); await command(page, 'verify');
+  await page.getByRole('tab', { name: '전후 비교' }).click();
+  await expect(admin.locator('td').nth(1)).toHaveText('접근 차단');
+  await expect(service.locator('td').nth(1)).toHaveText('접근 허용 · 정상');
+  await expect(page.locator('#comparison-status')).toContainText('재검증을 모두 통과');
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.locator('#port-443').selectOption('block');
+  await page.getByRole('tab', { name: '전후 비교' }).click();
+  await expect(service.locator('td').nth(1)).toHaveText('다시 조사 필요');
+  await page.getByRole('tab', { name: '가상 터미널' }).click();
+  await command(page, 'scan club-server'); await command(page, 'verify');
+  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  await expect(service.locator('td').nth(0)).toHaveText('접근 허용 · 정상');
+  await expect(service.locator('td').nth(1)).toHaveText('접근 차단 · 열람 불가');
+  await expect(page.locator('#next')).toBeHidden();
+  await page.getByRole('button', { name: '현재 미션 초기화', exact: true }).click();
+  await page.getByRole('button', { name: '초기화', exact: true }).click();
+  await page.getByRole('tab', { name: '전후 비교' }).click();
+  await expect(service.locator('td').nth(0)).toHaveText('조사 기록 없음');
+});
+
+test('로그인 전후 비교는 긴 흔한 값과 정상 사용자·시도 제한을 함께 보여줌', async ({ page }) => {
+  await seedGame(page, await missionState(2));
+  await command(page, 'inspect login');
+  await page.locator('#answer-2').check();
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.locator('#min-length').selectOption('15');
+  await page.getByRole('tab', { name: '가상 터미널' }).click();
+  await command(page, 'inspect login');
+  await page.getByRole('tab', { name: '전후 비교' }).click();
+  const candidate = page.locator('#comparison').getByRole('row', { name: /긴 흔한 후보/ });
+  const normal = page.locator('#comparison').getByRole('row', { name: /정상 사용자 첫 로그인/ });
+  const attempts = page.locator('#comparison').getByRole('row', { name: /반복 실패 4회차/ });
+  await expect(candidate.locator('td').nth(1)).toHaveText('허용');
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.locator('#blockCommon').check(); await page.locator('#limitAttempts').check();
+  await page.getByRole('button', { name: '현재 상태 재검증', exact: true }).click();
+  await page.getByRole('tab', { name: '전후 비교' }).click();
+  await expect(candidate.locator('td').nth(0)).toHaveText('허용'); await expect(candidate.locator('td').nth(1)).toHaveText('거부');
+  await expect(attempts.locator('td').nth(0)).toHaveText('실패'); await expect(attempts.locator('td').nth(1)).toHaveText('제한됨');
+  await expect(normal.locator('td').nth(0)).toHaveText('성공'); await expect(normal.locator('td').nth(1)).toHaveText('성공');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('파일 전후 비교는 복구 전 변경 기록을 유지하고 새 계산을 요구함', async ({ page }, testInfo) => {
+  await seedGame(page, await missionState(3));
+  await command(page, 'inspect baseline'); await command(page, 'hash files');
+  await page.locator('#answer-1').check();
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.getByRole('button', { name: 'budget.csv 선택 및 복구', exact: true }).click();
+  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  const budget = page.locator('#comparison').getByRole('row', { name: /budget.csv/ });
+  await expect(budget.locator('td').nth(0)).toHaveText('변경 감지');
+  await expect(budget.locator('td').nth(1)).toHaveText('다시 조사 필요');
+  await expect(page.locator('#results')).toBeHidden();
+  await page.getByRole('tab', { name: '가상 터미널' }).click();
+  await command(page, 'hash files'); await command(page, 'verify');
+  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  await expect(budget.locator('td').nth(0)).toHaveText('변경 감지'); await expect(budget.locator('td').nth(1)).toHaveText('일치');
+  await expect(page.locator('#comparison-status')).toContainText('재검증을 모두 통과');
+  await expect(page.locator('#answer-feedback')).toContainText('미션을 완료했습니다');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.locator('.workspace').screenshot({ path: '/tmp/security-lab-comparison-' + testInfo.project.name + '.png' });
+});
+
+test('오답 피드백은 조사 전 근거를 요청하고 선택별 오해를 설명함', async ({ page }) => {
+  await seedGame(page, await missionState(1));
+  await page.locator('#answer-0').check();
+  await expect(page.locator('#answer-feedback')).toContainText('아직 조사 근거가 충분하지 않습니다');
+  await command(page, 'scan club-server'); await command(page, 'inspect club-server 8080');
+  await expect(page.locator('#answer-feedback')).toContainText('열린 포트만으로');
+  await expect(page.locator('#next')).toBeHidden();
+  for (const [index, options] of [[0, [[1, '조사 권한'], [2, '승인이 먼저']]], [1, [[0, '열린 포트만으로'], [2, 'HTTPS 서비스의 존재']]], [2, [[0, 'password!'], [1, '반복 로그인']]], [3, [[0, '악성 여부'], [2, '신원을 인증']]]]) {
+    await seedGame(page, await missionState(index, true));
+    for (const [answer, concept] of options) {
+      await page.locator('#answer-' + answer).check();
+      await expect(page.locator('#answer-feedback')).toContainText(concept);
+      await command(page, 'verify');
+      await expect(page.locator('#terminal')).toContainText(concept);
+      await expect(page.locator('#next')).toBeHidden();
+      await expect(page.locator('#results')).toBeHidden();
+    }
+  }
 });

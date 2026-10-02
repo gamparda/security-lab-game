@@ -5,6 +5,8 @@ export const MISSIONS = [
     commands: ['help', 'inspect', 'verify'],
     hints: ['조사 전에 대상과 권한을 확인해야 합니다.', 'help 다음에 inspect approval을 입력하세요.', '승인서 확인 후 「club-server의 가상 데이터만 조사」를 선택하고 verify를 입력하세요.'],
     answers: ['club-server의 가상 데이터만 조사', '인터넷의 모든 학교 서버 조사', '아무 IP나 조사'], correct: 0,
+    evidence: ['help', 'approval'], investigation: 'help와 inspect approval로 사용법과 승인 범위를 확인하세요.',
+    answerFeedback: ['승인서에 적힌 조사 범위와 일치합니다. verify로 조사 준비를 확인하세요.', '학교 서버라는 이유만으로 조사 권한이 생기지는 않습니다. inspect approval에서 승인된 대상을 다시 확인하세요.', '대상과 행위의 승인이 먼저 필요합니다. inspect approval에서 조사 범위를 확인하세요.'],
     explanation: '승인은 대상과 행위의 범위를 함께 정합니다. 여기서는 게임 내부의 club-server만 조사합니다.',
   },
   {
@@ -13,6 +15,8 @@ export const MISSIONS = [
     commands: ['help', 'inspect', 'scan', 'verify'],
     hints: ['열린 포트 자체가 취약점은 아닙니다. 운영 목적을 확인하세요.', 'scan club-server와 inspect club-server 8080으로 단서를 모으세요.', '443은 허용하고 8080만 차단한 뒤 scan club-server, verify를 차례로 실행하세요.'],
     answers: ['열린 포트는 모두 취약하므로 전부 차단', '사용하지 않는 관리 서비스의 접근이 허용되어 있음', 'HTTPS 자료 서비스는 항상 위험함'], correct: 1,
+    evidence: ['scan', 'port-8080'], investigation: 'scan club-server와 inspect club-server 8080으로 상태와 서비스 용도를 확인하세요.',
+    answerFeedback: ['열린 포트만으로 위험을 판단할 수는 없습니다. inspect club-server 443으로 자료 열람에 필요한 서비스를 확인하세요.', '조사한 서비스 용도와 일치합니다. 불필요한 접근을 제한하고 자료 서비스도 정상인지 재검증하세요.', 'HTTPS 서비스의 존재만으로 위험하다고 단정할 수는 없습니다. inspect club-server 443과 inspect club-server 8080으로 운영 목적을 비교하세요.'],
     explanation: '필수 HTTPS 서비스(443)는 유지하고 사용하지 않는 관리 서비스(8080)의 접근을 제한했습니다. 방화벽 차단은 프로세스 종료와 다릅니다.',
   },
   {
@@ -21,6 +25,8 @@ export const MISSIONS = [
     commands: ['help', 'inspect', 'verify'],
     hints: ['특수문자가 있어도 짧고 흔한 값은 안전하다고 단정할 수 없습니다.', 'inspect login으로 후보와 시도 기록을 확인하세요.', '최소 길이 15, 흔한 값 차단, 3회 시도 제한을 적용하고 verify를 입력하세요.'],
     answers: ['특수문자를 하나 붙이면 충분히 안전함', 'SHA-256으로 저장하면 모든 공격을 막을 수 있음', '짧고 흔한 값이 허용되고 반복 시도 제한이 없음'], correct: 2,
+    evidence: ['login'], investigation: 'inspect login으로 더미 후보와 반복 실패 기록을 확인하세요.',
+    answerFeedback: ['password!처럼 기호가 있어도 짧고 흔한 값일 수 있습니다. inspect login에서 후보 허용 여부와 반복 실패 기록을 비교하세요.', 'SHA-256은 반복 로그인 시도를 제한하지 않으며 비밀번호 저장에는 전용 방식이 필요합니다. inspect login에서 길이·흔한 값·시도 제한을 확인하세요.', '더미 후보와 반복 실패 기록에 맞는 설명입니다. 정책을 적용한 뒤 정상 사용자와 반복 실패를 함께 재검증하세요.'],
     explanation: '이 미션은 길이 15 이상, 흔한 값 차단, 연속 실패 3회 후 제한을 사용합니다. 문자 종류 혼합만 강제하지 않습니다. 정책 변경이 기존 비밀번호를 자동 변경하지는 않으며, 여기서는 새 정책의 후보 검사를 시뮬레이션합니다.',
   },
   {
@@ -29,6 +35,8 @@ export const MISSIONS = [
     commands: ['help', 'inspect', 'hash', 'verify'],
     hints: ['해시 비교에는 신뢰할 수 있는 기준값이 필요합니다.', 'inspect baseline과 hash files로 세 파일을 비교하세요.', 'budget.csv를 선택해 원본으로 복구하고 hash files 다음 verify를 실행하세요.'],
     answers: ['해시가 다르면 반드시 악성코드임', '신뢰 가능한 기준과 다르므로 파일 바이트가 변경됨', '해시가 같으면 작성자의 신원까지 보장됨'], correct: 1,
+    evidence: ['baseline', 'hash', 'mismatch'], investigation: 'inspect baseline과 hash files로 신뢰 기준과 변경된 파일을 확인하세요.',
+    answerFeedback: ['해시 불일치는 바이트가 바뀌었다는 뜻이며 악성 여부를 판정하지 않습니다. 파일 비교에서 현재 값과 신뢰 기준을 다시 살펴보세요.', '신뢰 기준과 해시 비교 결과에 맞는 설명입니다. 변경된 파일을 복구한 뒤 해시를 다시 계산하고 재검증하세요.', '해시 일치는 비교한 바이트를 확인할 뿐 작성자의 신원을 인증하지 않습니다. inspect baseline으로 비교 기준을 신뢰하는 이유를 확인하세요.'],
     explanation: '다른 SHA-256은 바이트 변경을 뜻하며 악성 여부를 판정하지 않습니다. 일치는 신뢰 가능한 기준과 같은 바이트임을 확인할 뿐 작성자를 인증하지 않습니다. 비밀번호 저장에는 단순 SHA-256 대신 Argon2id 등의 전용 방식이 필요합니다.',
   },
 ];

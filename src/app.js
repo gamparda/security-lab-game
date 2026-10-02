@@ -1,5 +1,5 @@
 import { MISSIONS, ORIGINAL_FILES } from './missions.js';
-import { initialState, progress, stage, score, runCommand, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
+import { initialState, progress, stage, score, runCommand, answerFeedback, accepted, loginSimulation, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
 import { loadGame, saveGame } from './storage.js';
 
 const $ = id => document.getElementById(id);
@@ -76,6 +76,10 @@ function render() {
     label.append(radio, el('span', answer));
     return label;
   }));
+  const feedback = answerFeedback(state);
+  $('answer-feedback').hidden = !feedback;
+  $('answer-feedback').textContent = feedback?.text ?? '';
+  $('answer-feedback').className = 'answer-feedback ' + (feedback?.status === 'supported' ? 'success' : 'warning');
   $('hint').textContent = `힌트 보기 (${p.hint}/3)`;
   $('hint-copy').textContent = p.hint ? m.hints[p.hint - 1] : '개념 → 확인할 위치 → 다음 행동 순서로 안내합니다.';
   $('next').hidden = !p.verified || state.active === 3;
@@ -84,7 +88,7 @@ function render() {
   $('hint').disabled = busy || p.hint === 3;
   $('reset-mission').disabled = busy;
   $('reset-all').disabled = busy;
-  renderSettings(); renderFiles(); renderResults();
+  renderSettings(); renderFiles(); renderComparison(); renderResults();
   const commands = [ ['help', 'inspect approval', 'verify'], ['scan club-server', 'inspect club-server 443', 'inspect club-server 8080', 'verify'], ['inspect login', 'verify'], ['inspect baseline', 'hash files', 'verify'] ][state.active];
   $('quick-commands').replaceChildren(...commands.map(command => {
     const button = el('button', command); button.disabled = busy;
@@ -160,6 +164,44 @@ function renderFiles() {
     card.append(el('h3', row.name), el('p', row.matches ? '✓ 일치' : '△ 변경 감지', row.matches ? 'success' : 'warning'), el('p', '현재 SHA-256', 'muted'), el('code', row.actual), el('p', '신뢰 기준 SHA-256', 'muted'), el('code', row.expected));
     $('files').append(card);
   }
+}
+function renderComparison() {
+  const container = $('comparison'), p = progress(state), observations = p.observations;
+  container.replaceChildren();
+  if (state.active === 0) { container.append(el('p', '다음 미션부터 조사한 결과와 방어 이후의 변화를 비교합니다.', 'muted')); return; }
+  const after = state.active === 3 && p.hashPending ? null : observations.after;
+  const guidance = [null, 'scan club-server로 접근 상태를 조사하세요. 설정을 바꾼 뒤 다시 scan하고 자료 서비스도 재검증하세요.', 'inspect login으로 후보와 시도 기록을 조사하세요. 정책을 바꾼 뒤 다시 inspect login하거나 현재 상태를 재검증하세요.', 'hash files의 실제 계산 결과를 기록합니다. 복구 후에는 해시를 다시 계산해야 비교할 수 있습니다.'][state.active];
+  container.append(el('h3', '방어 전후 관찰 기록'), el('p', guidance, 'muted'));
+  const status = el('p', p.verified ? '방어와 정상 기능의 재검증을 모두 통과했습니다.' : '관찰 결과와 미션 완료는 별도로 확인합니다. 원인 설명과 현재 상태 재검증을 마치세요.', 'muted');
+  status.id = 'comparison-status'; container.append(status);
+  let labels;
+  function values(snapshot) {
+    if (!snapshot) return null;
+    if (state.active === 1) return [snapshot[443] ? '접근 허용 · 정상' : '접근 차단 · 열람 불가', snapshot[8080] ? '접근 허용' : '접근 차단'];
+    if (state.active === 2) {
+      const result = loginSimulation(snapshot);
+      return [snapshot.minLength + '자', snapshot.blockCommon ? '적용' : '미적용', accepted('school-club-password', snapshot) ? '허용' : '거부', result.attempts[3].result, result.normal ? '성공' : '실패'];
+    }
+    return Object.keys(ORIGINAL_FILES).map(name => snapshot.matches[name] ? '일치' : '변경 감지');
+  }
+  if (state.active === 1) labels = ['443 자료 서비스', '8080 관리 서비스'];
+  if (state.active === 2) labels = ['최소 길이', '흔한 값 차단 목록', '긴 흔한 후보: school-club-password', '반복 실패 4회차', '정상 사용자 첫 로그인'];
+  if (state.active === 3) labels = Object.keys(ORIGINAL_FILES);
+  const beforeValues = values(observations.before), afterValues = values(after);
+  const table = el('table');
+  const caption = el('caption', '조사 당시 기록 비교'); table.append(caption);
+  const head = el('thead'), heading = el('tr');
+  for (const label of ['확인 항목', '방어 전 조사', '변경 후 확인']) { const cell = el('th', label); cell.scope = 'col'; heading.append(cell); }
+  head.append(heading); table.append(head);
+  const body = el('tbody');
+  labels.forEach((label, i) => {
+    const row = el('tr'), title = el('th', label); title.scope = 'row';
+    row.append(title, el('td', beforeValues?.[i] ?? '조사 기록 없음'), el('td', afterValues?.[i] ?? (observations.changed ? '다시 조사 필요' : '방어 적용 전')));
+    body.append(row);
+  });
+  table.append(body); container.append(table);
+  if (!observations.before) container.append(el('p', '설정을 바꾸기 전에 조사하면 방어 전 기록도 남습니다.', 'muted'));
+  if (state.active === 3) container.append(el('p', '해시 불일치는 변경을 뜻합니다. 악성 여부나 작성자의 신원을 판정하지 않습니다.', 'muted'));
 }
 function renderResults() {
   $('results').hidden = !state.missions.every(p => p.verified);

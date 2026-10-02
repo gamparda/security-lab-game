@@ -3,12 +3,26 @@ import { MISSIONS, ORIGINAL_FILES } from './missions.js';
 
 export const SAVE_KEY = 'security-lab-game:v1';
 const CLUES = [['help', 'approval'], ['scan', 'port-443', 'port-8080', 'rescan'], ['login'], ['baseline', 'hash', 'mismatch']];
+function loadObservations(raw, index, state) {
+  const changed = index === 1 ? !state.ports[443] || !state.ports[8080]
+    : index === 2 ? state.login.minLength !== 6 || state.login.blockCommon || state.login.limitAttempts
+    : index === 3 ? state.files['budget.csv'] === ORIGINAL_FILES['budget.csv'] : false;
+  function snapshot(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    if (index === 1 && [443, 8080].every(port => typeof value[port] === 'boolean')) return { 443: value[443], 8080: value[8080] };
+    if (index === 2 && [6, 12, 15].includes(value.minLength) && typeof value.blockCommon === 'boolean' && typeof value.limitAttempts === 'boolean') return { minLength: value.minLength, blockCommon: value.blockCommon, limitAttempts: value.limitAttempts };
+    if (index === 3 && Object.keys(ORIGINAL_FILES).every(name => typeof value.matches?.[name] === 'boolean')) return { matches: Object.fromEntries(Object.keys(ORIGINAL_FILES).map(name => [name, value.matches[name]])) };
+    return null;
+  }
+  const modified = changed || raw?.changed === true;
+  return { changed: modified, before: snapshot(raw?.before), after: modified ? snapshot(raw?.after) : null };
+}
 export function saveGame(state, storage) {
   const data = {
     version: 1, active: state.active, ports: state.ports, login: state.login,
     restored: state.files['budget.csv'] === ORIGINAL_FILES['budget.csv'],
     hashComputed: state.missions[3].hashes.length === 3 || state.missions[3].hashPending,
-    missions: state.missions.map(({ clues, answer, hint, verified, selectedFile }) => ({ clues, answer, hint, verified, selectedFile })),
+    missions: state.missions.map(({ clues, answer, hint, verified, selectedFile, observations }) => ({ clues, answer, hint, verified, selectedFile, observations })),
   };
   storage.setItem(SAVE_KEY, JSON.stringify(data));
 }
@@ -27,7 +41,7 @@ export async function loadGame(storage) {
     data.missions.forEach((p, i) => {
       if (!Array.isArray(p.clues) || p.clues.length > CLUES[i].length || p.clues.some(key => !CLUES[i].includes(key)) || new Set(p.clues).size !== p.clues.length || !(p.answer === null || Number.isInteger(p.answer) && p.answer >= 0 && p.answer < MISSIONS[i].answers.length) || !Number.isInteger(p.hint) || p.hint < 0 || p.hint > 3 || typeof p.verified !== 'boolean' || !(p.selectedFile === null || i === 3 && Object.hasOwn(ORIGINAL_FILES, p.selectedFile))) throw new Error('Invalid progress');
       if (i < state.active && !p.verified || i > state.active && (p.verified || p.clues.length || p.answer !== null || p.hint || p.selectedFile !== null)) throw new Error('Invalid order');
-      state.missions[i] = { ...state.missions[i], clues: [...p.clues], answer: p.answer, hint: p.hint, verified: p.verified, selectedFile: p.selectedFile };
+      state.missions[i] = { ...state.missions[i], clues: [...p.clues], answer: p.answer, hint: p.hint, verified: p.verified, selectedFile: p.selectedFile, observations: loadObservations(p.observations, i, state) };
     });
     // 완료 플래그를 신뢰하지 않고 저장된 정책과 단서로 다시 판정한다.
     const active = state.active;
