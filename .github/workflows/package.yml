@@ -43,6 +43,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:e2e
       - name: Test Windows launcher window
+        timeout-minutes: 2
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./tests/windows_launcher.ps1

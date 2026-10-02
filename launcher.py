@@ -1,7 +1,12 @@
 """Standalone desktop entry point; bundled with Python and game assets."""
 
 import sys
+import argparse
+import json
+import os
+from pathlib import Path
 import threading
+import traceback
 import webbrowser
 from http.server import ThreadingHTTPServer
 
@@ -25,10 +30,23 @@ def main():
         serve()
         return
 
+    parser = argparse.ArgumentParser(description='Security Lab desktop launcher')
+    parser.add_argument('--no-browser', action='store_true', help='Skip browser opening during automated verification')
+    parser.add_argument('--diagnostics', type=Path, help='Write startup verification to this file')
+    args = parser.parse_args()
+
+    def report(data):
+        if args.diagnostics:
+            args.diagnostics.write_text(json.dumps(data), encoding='utf-8')
+
     import tkinter as tk
     from tkinter import messagebox
 
-    root = tk.Tk()
+    try:
+        root = tk.Tk()
+    except Exception:
+        report({'error': traceback.format_exc()})
+        raise
     root.title('Security Lab')
     root.geometry('460x270')
     root.resizable(False, False)
@@ -36,6 +54,7 @@ def main():
     try:
         server = start_server()
     except OSError as error:
+        report({'error': str(error)})
         messagebox.showerror('Security Lab', str(error))
         root.destroy()
         return
@@ -66,7 +85,12 @@ def main():
     tk.Button(buttons, text='게임 다시 열기', command=open_game, font=('맑은 고딕', 10), width=16, bg='#79e3c2', fg='#092c22').pack(side='left', padx=6)
     tk.Button(buttons, text='종료', command=close, font=('맑은 고딕', 10), width=12).pack(side='left', padx=6)
     root.protocol('WM_DELETE_WINDOW', close)
-    root.after(200, open_game)
+    def ready():
+        report({'url': url, 'pid': os.getpid(), 'windowVisible': bool(root.winfo_viewable())})
+        if not args.no_browser:
+            open_game()
+
+    root.after(200, ready)
     root.mainloop()
 
 
