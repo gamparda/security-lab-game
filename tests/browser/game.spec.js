@@ -3,6 +3,144 @@ import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin,
 import { saveGame, SAVE_KEY } from '../../src/storage.js';
 import { ORIGINAL_FILES } from '../../src/missions.js';
 
+test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용됨', async ({ page }) => {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const stylesheet = page.waitForResponse(response => new URL(response.url()).pathname === '/src/style.css');
+    if (attempt === 0) await page.goto('/');
+    else await page.reload();
+    const response = await stylesheet;
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toMatch(/^text\/css\b/);
+    await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
+    await expect(page.locator('.workspace')).toHaveCSS('display', 'grid');
+    await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+    await expect(page.locator('#game')).toBeVisible();
+    await expect(page.locator('#loading-screen')).toBeHidden();
+  }
+});
+
+test('느린 CSS는 로딩 화면에서 기다리고 적용 후에만 게임을 표시함', async ({ page }) => {
+  let release, requested;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { requested = resolve; });
+  await page.route('**/src/style.css', async route => { requested(); await gate; await route.continue(); });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await started;
+    await expect(page.locator('#loading-screen')).toBeVisible();
+    await expect(page.locator('#game')).toBeHidden();
+    release();
+    await expect(page.locator('#game')).toBeVisible();
+    await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
+  } finally { release(); }
+});
+
+test('첫 CSS 요청 실패는 한 번 자동 재시도하고 저장된 진행을 복원함', async ({ page }) => {
+  const saved = await seedGame(page, await missionState(1));
+  let requests = 0;
+  await page.route('**/src/style.css*', route => ++requests === 1 ? route.abort() : route.continue());
+  await page.reload();
+  await expect(page.locator('#game')).toBeVisible();
+  await expect(page.locator('#loading-screen')).toBeHidden();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+  expect(requests).toBe(2);
+  expect(await page.evaluate(key => localStorage.getItem(key), SAVE_KEY)).toBe(saved);
+});
+
+test('CSS 재시도도 실패하면 게임을 숨기고 수동 재시도로 진행을 유지함', async ({ page }) => {
+  const saved = await seedGame(page, await missionState(1));
+  let requests = 0;
+  await page.route('**/src/style.css*', route => { requests++; return route.abort(); });
+  await page.reload();
+  await expect(page.locator('#loading-message')).toContainText('화면을 불러오지 못했습니다');
+  await expect(page.locator('#game')).toBeHidden();
+  await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+  expect(requests).toBe(2);
+  expect(await page.evaluate(key => localStorage.getItem(key), SAVE_KEY)).toBe(saved);
+  await page.unroute('**/src/style.css*');
+  await page.getByRole('link', { name: '다시 불러오기', exact: true }).click();
+  await expect(page.locator('#game')).toBeVisible();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+});
+
+test('200 응답이어도 CSS가 적용되지 않았으면 게임을 표시하지 않음', async ({ page }) => {
+  await page.route('**/src/style.css*', route => route.fulfill({ status: 200, contentType: 'text/css', body: '/* missing game styles */' }));
+  await page.goto('/');
+  await expect(page.locator('#loading-message')).toContainText('화면을 불러오지 못했습니다');
+  await expect(page.locator('#game')).toBeHidden();
+});
+
+test('응답하지 않는 CSS는 재시도 제한 시간 후 안내하고 늦게 도착해도 게임을 열지 않음', async ({ page }) => {
+  let release, first, second, requests = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  const firstRequest = new Promise(resolve => { first = resolve; });
+  const secondRequest = new Promise(resolve => { second = resolve; });
+  await page.clock.install();
+  await page.route('**/src/style.css*', async route => {
+    const attempt = ++requests;
+    if (attempt === 1) first(); else second();
+    await gate;
+    if (attempt === 1) await route.abort(); else await route.continue();
+  });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await firstRequest;
+    await page.clock.fastForward(8001);
+    await secondRequest;
+    await page.clock.fastForward(8001);
+    await expect(page.locator('#loading-message')).toContainText('화면을 불러오지 못했습니다');
+    release();
+    await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
+    await expect(page.locator('#game')).toBeHidden();
+    expect(requests).toBe(2);
+  } finally { release(); }
+});
+
+test('게임 모듈이 느리면 초기화와 진행 복원 완료까지 기다림', async ({ page }) => {
+  await seedGame(page, await missionState(2));
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
+  try {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
+    await expect(page.locator('#game')).toBeHidden();
+    release();
+    await expect(page.locator('#game')).toBeVisible();
+    await expect(page.locator('#mission-title')).toHaveText('약한 로그인 정책');
+  } finally { release(); }
+});
+
+test('의존 모듈 로딩 실패는 재시도 안내를 표시하고 진행을 삭제하지 않음', async ({ page }) => {
+  const saved = await seedGame(page, await missionState(2));
+  await page.route('**/src/engine.js', route => route.abort());
+  await page.reload();
+  await expect(page.locator('#loading-message')).toContainText('게임을 준비하지 못했습니다');
+  await expect(page.locator('#game')).toBeHidden();
+  expect(await page.evaluate(key => localStorage.getItem(key), SAVE_KEY)).toBe(saved);
+  await page.unroute('**/src/engine.js');
+  await page.getByRole('link', { name: '다시 불러오기', exact: true }).click();
+  await expect(page.locator('#game')).toBeVisible();
+  await expect(page.locator('#mission-title')).toHaveText('약한 로그인 정책');
+});
+
+test('응답하지 않는 게임 모듈은 제한 시간 이후 안내하고 늦게 도착해도 숨김을 유지함', async ({ page }) => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.clock.install();
+  await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
+    await page.clock.fastForward(8001);
+    await expect(page.locator('#loading-message')).toContainText('게임을 준비하지 못했습니다');
+    release();
+    await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+    await expect(page.locator('#game')).toBeHidden();
+    await expect(page.locator('#loading-screen')).toBeVisible();
+  } finally { release(); }
+});
+
 async function missionState(index, completed = false) {
   const state = initialState();
   for (let i = 0; i <= index; i++) {

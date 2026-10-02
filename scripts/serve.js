@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
-const publicFiles = new Set(['index.html', 'src/app.js', 'src/engine.js', 'src/missions.js', 'src/storage.js', 'src/style.css']);
+const publicFiles = new Set(['index.html', 'src/bootstrap.js', 'src/app.js', 'src/engine.js', 'src/missions.js', 'src/storage.js', 'src/style.css']);
 const server = createServer(async (req, res) => {
   const headers = {
     'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
