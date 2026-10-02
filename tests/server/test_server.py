@@ -4,6 +4,7 @@ from pathlib import Path
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
+from launcher import check_server_assets
 
 spec = importlib.util.spec_from_file_location('game_server', Path(__file__).resolve().parents[2] / 'run.py')
 module = importlib.util.module_from_spec(spec)
@@ -59,3 +60,25 @@ class ServerTest(unittest.TestCase):
         for method in ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']:
             with self.subTest(method=method):
                 self.assertEqual(self.request(method, '/')[0], 405)
+
+    def test_launcher_requires_all_assets_before_opening(self):
+        check_server_assets(self.server.server_port)
+
+    def test_launcher_rejects_missing_stylesheet(self):
+        class MissingStyle(module.GameHandler):
+            def do_GET(self):
+                if self.path == '/src/style.css':
+                    self.respond(404, b'Not found')
+                else:
+                    super().do_GET()
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), MissingStyle)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with self.assertRaisesRegex(OSError, 'src/style.css'):
+                check_server_assets(server.server_port)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()

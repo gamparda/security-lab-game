@@ -11,6 +11,7 @@ ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 PUBLIC_FILES = {
     'index.html': 'text/html; charset=utf-8',
     'src/app.js': 'text/javascript; charset=utf-8',
+    'src/bootstrap.js': 'text/javascript; charset=utf-8',
     'src/engine.js': 'text/javascript; charset=utf-8',
     'src/missions.js': 'text/javascript; charset=utf-8',
     'src/storage.js': 'text/javascript; charset=utf-8',

@@ -13,7 +13,7 @@ try {
       if ($startup.PSObject.Properties.Name -contains 'error') { throw $startup.error }
       $testUrl = $startup.url.Replace('localhost', '127.0.0.1')
       $response = Invoke-WebRequest $testUrl -TimeoutSec 2 -NoProxy -UseBasicParsing
-      if ($response.StatusCode -eq 200 -and $startup.windowVisible) {
+      if ($response.StatusCode -eq 200 -and $startup.windowVisible -and $startup.assetsReady) {
         $ready = $true
         break
       }
