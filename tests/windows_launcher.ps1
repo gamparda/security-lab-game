@@ -5,21 +5,27 @@ Remove-Item $diagnostic -ErrorAction SilentlyContinue
 $process = Start-Process -FilePath (Resolve-Path 'dist/SecurityLab.exe') -ArgumentList @('--diagnostics', "`"$diagnostic`"", '--no-browser') -PassThru
 try {
   $ready = $false
-  for ($i = 0; $i -lt 60; $i++) {
+  $lastError = ''
+  for ($i = 0; $i -lt 30; $i++) {
     try {
       if (-not (Test-Path $diagnostic)) { Start-Sleep -Milliseconds 500; continue }
       $startup = Get-Content $diagnostic -Raw | ConvertFrom-Json
-      if ($startup.error) { throw $startup.error }
-      $response = Invoke-WebRequest $startup.url -TimeoutSec 1
+      if ($startup.PSObject.Properties.Name -contains 'error') { throw $startup.error }
+      $testUrl = $startup.url.Replace('localhost', '127.0.0.1')
+      $response = Invoke-WebRequest $testUrl -TimeoutSec 2 -NoProxy -UseBasicParsing
       if ($response.StatusCode -eq 200 -and $startup.windowVisible) {
         $ready = $true
         break
       }
-    } catch { }
+    } catch {
+      $lastError = $_.Exception.Message
+      if ($i -lt 3) { Write-Output $lastError }
+    }
     Start-Sleep -Milliseconds 500
   }
   if (-not $ready) {
     if (Test-Path $diagnostic) { Get-Content $diagnostic }
+    Write-Output $lastError
     Get-Process -Name SecurityLab -ErrorAction SilentlyContinue | Format-List Id,MainWindowTitle
     throw 'Packaged launcher window and local game server did not become ready.'
   }
