@@ -165,8 +165,8 @@ async function seedGame(page, state) {
 }
 
 async function command(page, text) {
-  const count = await page.locator('#terminal pre').count();
   await page.getByRole('textbox', { name: '게임 명령어' }).fill(text);
+  const count = await page.locator('#terminal pre').count();
   await page.getByRole('button', { name: '실행 ↵', exact: true }).click();
   await expect(page.locator('#terminal pre')).toHaveCount(count + 2);
   await expect(page.locator('#command')).toBeEnabled();

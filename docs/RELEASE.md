@@ -1,4 +1,4 @@
-Security Lab v0.2.1 · Windows 10/11 64비트용 포터블 로컬 웹앱입니다.
+Security Lab v0.2.2 · Windows 10/11 64비트용 포터블 로컬 웹앱입니다.
 
 이번 버전에는 다음 변경을 포함합니다.
 
