@@ -330,7 +330,7 @@ test('파일 전후 비교는 복구 전 변경 기록을 유지하고 새 계�
   await expect(page.locator('#comparison-status')).toContainText('재검증을 모두 통과');
   await expect(page.locator('#answer-feedback')).toContainText('미션을 완료했습니다');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.locator('.workspace').screenshot({ path: '/tmp/security-lab-comparison-' + testInfo.project.name + '.png' });
+  await page.locator('.workspace').screenshot({ path: testInfo.outputPath('comparison.png') });
 });
 
 test('오답 피드백은 조사 전 근거를 요청하고 선택별 오해를 설명함', async ({ page }) => {

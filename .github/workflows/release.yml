@@ -1,46 +1,71 @@
 name: Publish verified portable
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       run_id:
         description: Successful Windows package run ID
         required: true
         type: string
+      tag:
+        description: Release tag matching package.json, such as v0.2.0
+        required: true
+        type: string
 permissions:
-  actions: read
-  contents: write
+  contents: read
 jobs:
+  package:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/package.yml
+    with:
+      runner: windows-latest
   release:
+    needs: package
+    if: ${{ always() && ((github.event_name == 'push' && needs.package.result == 'success') || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Verify package run
         id: package
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.run_id }}
+          RUN_ID: ${{ inputs.run_id || github.run_id }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
         run: |
           python3 - <<'PY'
-          import json, os, subprocess
+          import json, os, re, subprocess
+          from pathlib import Path
           repo = os.environ['GITHUB_REPOSITORY']
           run_id = os.environ['RUN_ID']
           assert run_id.isdecimal()
-          run = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/actions/runs/{run_id}']))
-          assert run['conclusion'] == 'success' and run['path'] == '.github/workflows/package.yml'
+          tag = os.environ['RELEASE_TAG']
+          assert re.fullmatch(r'v\d+\.\d+\.\d+', tag), 'Use a stable version tag such as v0.2.0'
+          version = json.loads(Path('package.json').read_text())['version']
+          assert tag == 'v' + version, 'Release tag must match package.json'
+          sha = os.environ['GITHUB_SHA']
+          if os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch':
+              run = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/actions/runs/{run_id}']))
+              assert run['conclusion'] == 'success' and run['path'] == '.github/workflows/package.yml'
+              assert run['head_sha'] == sha, 'Package and release must use the same commit'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('sha=' + run['head_sha'] + '\n')
+              output.write(f'sha={sha}\nrun_id={run_id}\ntag={tag}\n')
           PY
       - uses: actions/download-artifact@v4
         with:
           name: SecurityLab-Windows-X64
           path: portable
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ steps.package.outputs.run_id }}
           github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         with:
           name: security-lab-web
           path: release
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ steps.package.outputs.run_id }}
           github-token: ${{ github.token }}
       - name: Assemble release archives
         run: |
@@ -59,5 +84,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ steps.package.outputs.sha }}
+          RELEASE_TAG: ${{ steps.package.outputs.tag }}
         run: |
-          gh release create v0.1.0 release/SecurityLab-Windows-x64.zip release/security-lab-web.zip release/SHA256SUMS.txt --target "$TARGET_SHA" --title 'Security Lab v0.1.0 · Windows 포터블' --notes-file docs/RELEASE.md
+          gh release create "$RELEASE_TAG" release/SecurityLab-Windows-x64.zip release/security-lab-web.zip release/SHA256SUMS.txt --target "$TARGET_SHA" --title "Security Lab $RELEASE_TAG · Windows 포터블" --notes-file docs/RELEASE.md --latest

@@ -1,5 +1,11 @@
 name: Package executable
 on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Target OS runner
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       runner:

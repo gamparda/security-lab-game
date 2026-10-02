@@ -6,6 +6,8 @@
 
 ### 패키징된 실행 파일
 
+검증된 Windows 포터블과 웹 ZIP은 [최신 릴리즈](https://github.com/nu4ddi4/security-lab-game/releases/latest)에서 다운로드합니다.
+
 운영체제별 실행 파일은 GitHub Actions의 **Package executable** 워크플로에서 생성합니다. 성공한 빌드의 **Artifacts → SecurityLab-운영체제-아키텍처**를 다운로드하고 압축을 풉니다. Windows에서는 `SecurityLab.exe`를 더블클릭하면 게임이 브라우저에서 자동으로 열립니다. Python·Node.js·npm을 설치할 필요가 없습니다.
 
 첫 배포 대상은 **Windows 10/11 64비트 포터블**입니다. 실행 창의 **게임 다시 열기**로 브라우저를 다시 열 수 있고, **종료** 또는 실행 창 닫기로 게임 서버를 종료합니다. 파일 하나에 Python 런타임과 게임 파일이 포함되어 있어 첫 실행 시 압축 해제 시간이 필요할 수 있습니다. 진행은 기존처럼 브라우저에 저장됩니다.
@@ -59,6 +61,8 @@ Python 서버만 검증하려면 패키지 설치 없이 `python3 -m unittest di
 Linux에서 브라우저 시스템 라이브러리가 부족하면 `npx playwright install --with-deps chromium`을 사용합니다. GitHub Actions에도 같은 검증을 구성했습니다.
 
 이미 설치된 Chromium을 테스트에 사용하려면 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`에 실행 파일 경로를 지정합니다. Linux 예: `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm run check`. 지정하지 않으면 Playwright 전용 브라우저를 사용합니다.
+
+배포할 때는 `package.json`과 잠금 파일의 버전 및 `docs/RELEASE.md`를 갱신하고 PR 검사 통과 후 `main`에 병합합니다. 병합된 커밋에 버전과 같은 태그(예: `v0.2.0`)를 푸시하면 Windows 패키징·전체 테스트·실행 창 검증을 거쳐 ZIP 두 개와 `SHA256SUMS.txt`를 GitHub 릴리즈에 게시합니다. 패키징이나 검사 실패 시 릴리즈는 게시하지 않습니다. 수동 게시에서는 같은 커밋의 성공한 Windows 패키징 실행 ID와 버전 태그를 지정합니다.
 
 - `src/missions.js`: 목표, 허용 명령, 힌트, 설명, 내장 파일
 - `src/engine.js`: 허용 목록 명령 해석, 가상 정책, 상태 판정, SHA-256
