@@ -1,0 +1,63 @@
+name: Publish verified portable
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Windows package run ID
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify package run
+        id: package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          repo = os.environ['GITHUB_REPOSITORY']
+          run_id = os.environ['RUN_ID']
+          assert run_id.isdecimal()
+          run = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/actions/runs/{run_id}']))
+          assert run['conclusion'] == 'success' and run['path'] == '.github/workflows/package.yml'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('sha=' + run['head_sha'] + '\n')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: SecurityLab-Windows-X64
+          path: portable
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: security-lab-web
+          path: release
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Assemble release archives
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          from zipfile import ZipFile, ZIP_DEFLATED
+          directory = Path('release')
+          with ZipFile(directory / 'SecurityLab-Windows-x64.zip', 'w', ZIP_DEFLATED) as archive:
+              for name in ['SecurityLab.exe', '시작안내.txt']:
+                  archive.write(Path('portable') / name, name)
+          files = ['SecurityLab-Windows-x64.zip', 'security-lab-web.zip']
+          (directory / 'SHA256SUMS.txt').write_text(''.join(sha256((directory / name).read_bytes()).hexdigest() + '  ' + name + '\n' for name in files))
+          PY
+      - name: Publish portable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.package.outputs.sha }}
+        run: |
+          gh release create v0.1.0 release/SecurityLab-Windows-x64.zip release/security-lab-web.zip release/SHA256SUMS.txt --target "$TARGET_SHA" --title 'Security Lab v0.1.0 · Windows 포터블' --notes-file docs/RELEASE.md
