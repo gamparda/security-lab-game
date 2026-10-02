@@ -30,7 +30,7 @@ def main():
 
     root = tk.Tk()
     root.title('Security Lab')
-    root.geometry('420x235')
+    root.geometry('460x270')
     root.resizable(False, False)
     root.configure(bg='#111b29')
     try:
@@ -45,13 +45,14 @@ def main():
     thread.start()
 
     tk.Label(root, text='SECURITY LAB', font=('Arial', 22, 'bold'), fg='#79e3c2', bg='#111b29').pack(pady=(24, 12))
-    tk.Label(root, text='Play in your browser. Keep this window open.', fg='#e2e9f2', bg='#111b29').pack()
+    tk.Label(root, text='게임은 브라우저에서 실행됩니다.', font=('맑은 고딕', 11), fg='#e2e9f2', bg='#111b29').pack()
+    tk.Label(root, text='플레이하는 동안 이 창을 열어두세요.', font=('맑은 고딕', 10), fg='#99a8bc', bg='#111b29').pack(pady=(5, 0))
     status = tk.Label(root, text=url, fg='#99a8bc', bg='#111b29')
     status.pack(pady=(7, 14))
 
     def open_game():
         if not webbrowser.open(url):
-            status.configure(text='Open in your browser: ' + url)
+            status.configure(text='브라우저에서 이 주소를 열어주세요: ' + url)
 
     def close():
         root.destroy()
@@ -62,8 +63,8 @@ def main():
 
     buttons = tk.Frame(root, bg='#111b29')
     buttons.pack()
-    tk.Button(buttons, text='Open game', command=open_game, width=15, bg='#79e3c2', fg='#092c22').pack(side='left', padx=6)
-    tk.Button(buttons, text='Quit', command=close, width=12).pack(side='left', padx=6)
+    tk.Button(buttons, text='게임 다시 열기', command=open_game, font=('맑은 고딕', 10), width=16, bg='#79e3c2', fg='#092c22').pack(side='left', padx=6)
+    tk.Button(buttons, text='종료', command=close, font=('맑은 고딕', 10), width=12).pack(side='left', padx=6)
     root.protocol('WM_DELETE_WINDOW', close)
     root.after(200, open_game)
     root.mainloop()
