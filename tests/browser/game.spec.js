@@ -1,0 +1,90 @@
+import { test, expect } from '@playwright/test';
+
+async function command(page, text) {
+  const count = await page.locator('#terminal pre').count();
+  await page.getByRole('textbox', { name: '게임 명령어' }).fill(text);
+  await page.getByRole('button', { name: '실행 ↵', exact: true }).click();
+  await expect(page.locator('#terminal pre')).toHaveCount(count + 2);
+  await expect(page.locator('#command')).toBeEnabled();
+}
+async function tutorial(page) {
+  await command(page, 'help'); await command(page, 'inspect approval');
+  await page.getByLabel('club-server의 가상 데이터만 조사', { exact: true }).check();
+  await page.getByRole('button', { name: '현재 상태 재검증', exact: true }).click();
+  await expect(page.locator('#stage')).toHaveText('검증 완료');
+  await page.getByRole('button', { name: '다음 미션 →' }).click();
+}
+test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 없음', async ({ page }) => {
+  const requests = [], errors = [];
+  page.on('request', request => requests.push(request.url()));
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+  await tutorial(page);
+  await command(page, 'scan club-server'); await command(page, 'inspect club-server 8080');
+  await page.getByLabel('사용하지 않는 관리 서비스의 접근이 허용되어 있음', { exact: true }).check();
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.locator('#port-8080').selectOption('block');
+  await page.locator('#port-443').selectOption('block');
+  await page.getByRole('button', { name: '현재 상태 재검증', exact: true }).click();
+  await expect(page.locator('#stage')).not.toHaveText('검증 완료');
+  await expect(page.locator('#terminal')).toContainText('미충족: 443 자료 서비스 정상');
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.locator('#port-443').selectOption('allow');
+  await page.getByRole('tab', { name: '가상 터미널' }).click();
+  await command(page, 'scan club-server'); await command(page, 'verify');
+  await page.getByRole('button', { name: '힌트 보기' }).click();
+  await page.reload(); await expect(page.locator('#stage')).toHaveText('검증 완료');
+  await expect(page.locator('#hint')).toHaveText('힌트 보기 (1/3)');
+  await page.getByRole('button', { name: '다음 미션 →' }).click();
+  await command(page, 'inspect login');
+  await page.getByLabel('짧고 흔한 값이 허용되고 반복 시도 제한이 없음', { exact: true }).check();
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.getByLabel('최소 비밀번호 길이').selectOption('15');
+  await page.getByLabel('흔한 값 차단 목록 적용').check();
+  await page.getByLabel('연속 실패 3회 후 시도 제한').check();
+  await page.getByRole('button', { name: '현재 상태 재검증', exact: true }).click();
+  await expect(page.locator('#terminal')).toContainText('통과: 정상 사용자 첫 로그인 성공');
+  await expect(page.locator('#stage')).toHaveText('검증 완료');
+  await page.getByRole('button', { name: '다음 미션 →' }).click();
+  await command(page, 'inspect baseline'); await command(page, 'hash files');
+  await page.getByRole('tab', { name: '파일 비교' }).click();
+  await expect(page.locator('.file-card').filter({ hasText: 'budget.csv' })).toContainText('변경 감지');
+  await page.getByLabel('신뢰 가능한 기준과 다르므로 파일 바이트가 변경됨', { exact: true }).check();
+  await page.getByRole('tab', { name: '방어 설정' }).click();
+  await page.getByRole('button', { name: 'budget.csv 선택 및 복구' }).click();
+  await page.getByRole('tab', { name: '가상 터미널' }).click();
+  await command(page, 'hash files'); await command(page, 'verify');
+  await expect(page.locator('#results')).toBeVisible();
+  await expect(page.locator('#score')).toHaveText('100 / 100');
+  await page.reload(); await expect(page.locator('#results')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('button', { name: '전체 초기화', exact: true }).click();
+  await page.getByRole('button', { name: '초기화', exact: true }).click();
+  await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+  await expect(page.locator('#score')).toHaveText('0 / 100');
+  await expect(page.locator('#results')).toBeHidden();
+  expect(errors).toEqual([]);
+  expect(requests.every(url => new URL(url).hostname === 'localhost')).toBe(true);
+});
+test('입력은 텍스트로 표시되고 외부 URL에 접속하지 않음', async ({ page }) => {
+  await page.goto('/'); await tutorial(page);
+  const requests = [];
+  page.on('request', request => requests.push(request.url()));
+  const malicious = '<img src=x onerror="window.hacked=true">';
+  await command(page, malicious);
+  await expect(page.locator('#terminal')).toContainText(malicious);
+  expect(await page.evaluate(() => window.hacked)).toBeUndefined();
+  await command(page, 'scan https://example.com'); await command(page, 'scan 8.8.8.8'); await command(page, '');
+  expect(requests).toEqual([]);
+  expect(await page.locator('#command').getAttribute('maxlength')).toBe('200');
+});
+test('손상 저장 안내와 키보드 탭 전환', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('security-lab-game:v1', '{broken'));
+  await page.goto('/');
+  await expect(page.locator('#notice')).toContainText('저장 데이터가 손상');
+  await page.getByRole('tab', { name: '가상 터미널' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: '방어 설정' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#panel-settings')).toBeVisible();
+});

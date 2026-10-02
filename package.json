@@ -1,0 +1,16 @@
+{
+  "name": "security-lab-game",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "고등학생을 위한 브라우저 보안 체험 시뮬레이터",
+  "engines": { "node": ">=22.8" },
+  "scripts": {
+    "dev": "node scripts/serve.js",
+    "start": "node scripts/serve.js",
+    "test": "node --test --test-isolation=none tests/engine.test.js",
+    "test:e2e": "playwright test",
+    "check": "npm test && npm run test:e2e"
+  },
+  "devDependencies": { "@playwright/test": "^1.58.2" }
+}

@@ -1,0 +1,10 @@
+node_modules/
+.npm-cache/
+.browsers/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
