@@ -1,8 +1,12 @@
 name: Publish verified portable
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+    paths:
+      - docs/RELEASE.md
   workflow_dispatch:
     inputs:
       run_id:
@@ -16,13 +20,43 @@ on:
 permissions:
   contents: read
 jobs:
-  package:
+  prepare:
     if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check release version
+        id: version
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          version = json.loads(Path('package.json').read_text())['version']
+          assert re.fullmatch(r'\d+\.\d+\.\d+', version)
+          tag = 'v' + version
+          publish = True
+          if os.environ['GITHUB_REF_TYPE'] == 'tag':
+              assert os.environ['GITHUB_REF_NAME'] == tag, 'Tag must match package.json'
+          else:
+              event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+              previous = json.loads(subprocess.check_output(['git', 'show', event['before'] + ':package.json']))['version']
+              publish = tuple(map(int, version.split('.'))) > tuple(map(int, previous.split('.')))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'publish={str(publish).lower()}\ntag={tag}\n')
+          PY
+  package:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     uses: ./.github/workflows/package.yml
     with:
       runner: windows-latest
   release:
-    needs: package
+    needs: [prepare, package]
     if: ${{ always() && ((github.event_name == 'push' && needs.package.result == 'success') || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
@@ -35,7 +69,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.run_id || github.run_id }}
-          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag || needs.prepare.outputs.tag }}
         run: |
           python3 - <<'PY'
           import json, os, re, subprocess
