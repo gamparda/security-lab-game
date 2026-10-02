@@ -3,7 +3,7 @@ import { MISSIONS, ORIGINAL_FILES, TAMPERED_BUDGET, COMMON_PASSWORDS, NORMAL_PAS
 export function initialState() {
   return {
     version: 1, active: 0,
-    missions: MISSIONS.map(() => ({ clues: [], answer: null, hint: 0, verified: false, checks: [], hashes: [], selectedFile: null })),
+    missions: MISSIONS.map(() => ({ clues: [], answer: null, hint: 0, verified: false, checks: [], hashes: [], hashPending: false, selectedFile: null })),
     ports: { 443: true, 8080: true },
     login: { minLength: 6, blockCommon: false, limitAttempts: false },
     files: { ...ORIGINAL_FILES, 'budget.csv': TAMPERED_BUDGET },
@@ -11,7 +11,15 @@ export function initialState() {
 }
 export function progress(state) { return state.missions[state.active]; }
 function clue(state, key) {
-  if (!progress(state).clues.includes(key)) progress(state).clues.push(key);
+  const p = progress(state);
+  if (!p.clues.includes(key)) {
+    p.clues.push(key);
+    if (!p.verified) p.checks = [];
+  }
+}
+function invalidateVerification(state) {
+  progress(state).verified = false;
+  progress(state).checks = [];
 }
 export function explained(state, index = state.active) { return state.missions[index].answer === MISSIONS[index].correct; }
 export function defended(state, index = state.active) {
@@ -35,20 +43,18 @@ export function stage(state) {
 export function applyAnswer(state, answer) {
   if (!Number.isInteger(answer) || answer < 0 || answer >= MISSIONS[state.active].answers.length) throw new Error('유효하지 않은 설명입니다.');
   progress(state).answer = answer;
-  progress(state).verified = false;
+  invalidateVerification(state);
 }
 export function applyPort(state, port, allowed) {
   if (state.active !== 1 || ![443, 8080].includes(port) || typeof allowed !== 'boolean') throw new Error('설정할 수 없는 포트입니다.');
   state.ports[port] = allowed;
-  progress(state).verified = false;
-  progress(state).checks = [];
+  invalidateVerification(state);
   progress(state).clues = progress(state).clues.filter(key => key !== 'rescan');
 }
 export function applyLogin(state, policy) {
   if (state.active !== 2 || ![6, 12, 15].includes(policy.minLength) || typeof policy.blockCommon !== 'boolean' || typeof policy.limitAttempts !== 'boolean') throw new Error('유효하지 않은 정책입니다.');
   state.login = { ...policy };
-  progress(state).verified = false;
-  progress(state).checks = [];
+  invalidateVerification(state);
 }
 export function accepted(password, policy) {
   return password.length >= policy.minLength && (!policy.blockCommon || !COMMON_PASSWORDS.includes(password.toLowerCase()));
@@ -65,12 +71,17 @@ export async function sha256(content) {
   const result = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
   return Array.from(new Uint8Array(result), byte => byte.toString(16).padStart(2, '0')).join('');
 }
+export function canRestoreFiles(state) {
+  return state.active === 3 && ['baseline', 'hash', 'mismatch'].every(key => progress(state).clues.includes(key));
+}
 export function restoreFile(state, name) {
   if (state.active !== 3 || !Object.hasOwn(ORIGINAL_FILES, name)) throw new Error('내장 파일만 복구할 수 있습니다.');
+  if (!canRestoreFiles(state)) throw new Error('먼저 inspect baseline으로 기준을 확인하고 hash files로 변경을 조사하세요.');
   progress(state).selectedFile = name;
   state.files[name] = ORIGINAL_FILES[name];
-  progress(state).verified = false;
+  invalidateVerification(state);
   progress(state).hashes = [];
+  progress(state).hashPending = false;
 }
 export function nextMission(state) {
   if (!progress(state).verified || state.active >= MISSIONS.length - 1) return false;
@@ -131,6 +142,8 @@ export async function runCommand(state, input) {
     }));
     if (Object.keys(snapshot).some(name => snapshot[name] !== state.files[name])) return '계산 중 파일이 바뀌었습니다. hash files를 다시 실행하세요.';
     progress(state).hashes = hashes;
+    progress(state).hashPending = false;
+    if (!progress(state).verified) progress(state).checks = [];
     clue(state, 'hash');
     if (hashes.some(row => !row.matches)) clue(state, 'mismatch');
     return hashes.map(row => `${row.name}: ${row.matches ? '일치' : '변경 감지'}\n현재 ${row.actual}\n기준 ${row.expected}`).join('\n\n');

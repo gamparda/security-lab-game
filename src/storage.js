@@ -7,7 +7,7 @@ export function saveGame(state, storage) {
   const data = {
     version: 1, active: state.active, ports: state.ports, login: state.login,
     restored: state.files['budget.csv'] === ORIGINAL_FILES['budget.csv'],
-    hashComputed: state.missions[3].hashes.length === 3,
+    hashComputed: state.missions[3].hashes.length === 3 || state.missions[3].hashPending,
     missions: state.missions.map(({ clues, answer, hint, verified, selectedFile }) => ({ clues, answer, hint, verified, selectedFile })),
   };
   storage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -31,20 +31,29 @@ export async function loadGame(storage) {
     });
     // 완료 플래그를 신뢰하지 않고 저장된 정책과 단서로 다시 판정한다.
     const active = state.active;
+    let hashRetryNeeded = false;
     if (data.hashComputed) {
       if (active !== 3 || !state.missions[3].clues.includes('hash')) throw new Error('Invalid hash progress');
       state.active = 3;
-      await runCommand(state, 'hash files');
+      try {
+        await runCommand(state, 'hash files');
+      } catch {
+        // 연산 실패는 저장 손상이 아니다. 다음 복원에서도 재계산을 시도한다.
+        state.missions[3].hashPending = true;
+        state.missions[3].verified = false;
+        hashRetryNeeded = true;
+      }
     }
     for (let i = 0; i < 4; i++) {
       if (!data.missions[i].verified) continue;
       state.active = i;
       state.missions[i].verified = false;
       await runCommand(state, 'verify');
+      if (i === 3 && hashRetryNeeded) continue;
       if (!state.missions[i].verified) throw new Error('Invalid completion');
     }
     state.active = active;
-    return { state, recovered: false };
+    return { state, recovered: false, hashRetryNeeded };
   } catch {
     storage.removeItem(SAVE_KEY);
     return { state: initialState(), recovered: true };

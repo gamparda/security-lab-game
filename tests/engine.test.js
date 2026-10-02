@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin, restoreFile, nextMission, resetMission, score, sha256, accepted, loginSimulation } from '../src/engine.js';
+import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission, score, sha256, accepted, loginSimulation } from '../src/engine.js';
 import { ORIGINAL_FILES } from '../src/missions.js';
 import { loadGame, saveGame, SAVE_KEY } from '../src/storage.js';
 
@@ -82,10 +82,21 @@ test('변경된 파일만 탐지하고 복구 후 재계산이 필수', async ()
   restoreFile(state, 'budget.csv'); await runCommand(state, 'verify'); assert.equal(progress(state).verified, false);
   await runCommand(state, 'hash files'); await runCommand(state, 'verify'); assert.equal(progress(state).verified, true);
 });
-test('신뢰 기준 또는 변경 탐지 없이 먼저 복구하면 완료 불가', async () => {
+test('기준과 변경을 조사하기 전에는 파일 복구가 상태를 바꾸지 않음', async () => {
   const state = initialState(); await tutorial(state); await services(state); await login(state);
+  let before = structuredClone(state);
+  assert.equal(canRestoreFiles(state), false);
+  assert.throws(() => restoreFile(state, 'budget.csv'), /기준을 확인/); assert.deepEqual(state, before);
+  await runCommand(state, 'hash files');
+  before = structuredClone(state);
+  assert.equal(canRestoreFiles(state), false);
+  assert.throws(() => restoreFile(state, 'budget.csv'), /기준을 확인/); assert.deepEqual(state, before);
+  await runCommand(state, 'inspect baseline');
+  assert.equal(canRestoreFiles(state), true);
+  restoreFile(state, 'notice.txt');
+  assert.equal(canRestoreFiles(state), true);
   restoreFile(state, 'budget.csv'); await runCommand(state, 'hash files'); applyAnswer(state, 1); await runCommand(state, 'verify');
-  assert.equal(progress(state).verified, false);
+  assert.equal(progress(state).verified, true);
 });
 test('알 수 없는 명령, URL, IP, 긴 입력은 상태를 변경하지 않음', async () => {
   const state = initialState(); await tutorial(state); const before = structuredClone(state);
@@ -135,4 +146,79 @@ test('복구 직후 새로고침도 복구 후 해시 재계산을 대신하지 
   const storage = memoryStorage(); saveGame(state, storage); const loaded = await loadGame(storage);
   assert.equal(loaded.recovered, false); assert.equal(progress(loaded.state).hashes.length, 0);
   await runCommand(loaded.state, 'verify'); assert.equal(progress(loaded.state).verified, false);
+});
+
+test('복원 중 해시 연산 실패는 저장과 앞 미션을 보존하고 재시도할 수 있음', async t => {
+  const state = initialState(); await tutorial(state); await services(state); await login(state); await integrity(state);
+  progress(state).hint = 2;
+  const storage = memoryStorage(); saveGame(state, storage);
+  const saved = storage.getItem(SAVE_KEY);
+  const digest = t.mock.method(crypto.subtle, 'digest', async () => { throw new Error('Temporary digest failure'); });
+  const loaded = await loadGame(storage);
+  assert.equal(loaded.recovered, false); assert.equal(loaded.hashRetryNeeded, true);
+  assert.equal(storage.getItem(SAVE_KEY), saved);
+  assert.equal(loaded.state.active, 3); assert.ok(loaded.state.missions.slice(0, 3).every(p => p.verified));
+  assert.equal(progress(loaded.state).verified, false); assert.equal(progress(loaded.state).hint, 2);
+  assert.equal(progress(loaded.state).hashes.length, 0); assert.equal(nextMission(loaded.state), false);
+  await runCommand(loaded.state, 'verify'); assert.equal(progress(loaded.state).verified, false);
+  saveGame(loaded.state, storage);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).hashComputed, true);
+  assert.equal((await loadGame(storage)).hashRetryNeeded, true);
+  digest.mock.restore();
+  const retried = await loadGame(storage);
+  assert.equal(retried.recovered, false); assert.equal(retried.hashRetryNeeded, false);
+  assert.equal(progress(retried.state).hashes.length, 3); assert.equal(progress(retried.state).verified, false);
+  await runCommand(retried.state, 'verify'); assert.equal(progress(retried.state).verified, true);
+});
+
+test('Web Crypto가 없는 환경에서도 유효한 저장을 삭제하지 않음', async () => {
+  const state = initialState(); await tutorial(state); await services(state); await login(state); await integrity(state);
+  const storage = memoryStorage(); saveGame(state, storage);
+  const saved = storage.getItem(SAVE_KEY), descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  try {
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined });
+    const loaded = await loadGame(storage);
+    assert.equal(loaded.recovered, false); assert.equal(loaded.hashRetryNeeded, true);
+    assert.equal(storage.getItem(SAVE_KEY), saved); assert.equal(loaded.state.active, 3);
+    assert.ok(loaded.state.missions.slice(0, 3).every(p => p.verified));
+    assert.equal(progress(loaded.state).verified, false);
+  } finally { Object.defineProperty(globalThis, 'crypto', descriptor); }
+});
+
+test('해시 연산 실패 중에도 잘못된 앞 미션 완료는 그대로 인정하지 않음', async t => {
+  const state = initialState(); await tutorial(state); await services(state); await login(state); await integrity(state);
+  state.login.limitAttempts = false;
+  const storage = memoryStorage(); saveGame(state, storage);
+  t.mock.method(crypto.subtle, 'digest', async () => { throw new Error('Temporary digest failure'); });
+  const loaded = await loadGame(storage);
+  assert.equal(loaded.recovered, true); assert.equal(loaded.state.active, 0);
+  assert.equal(storage.getItem(SAVE_KEY), null);
+});
+
+test('설명·포트·로그인·파일 변경은 이전 통과 결과와 완료 상태를 무효화함', async () => {
+  const completed = initialState(); await tutorial(completed); await services(completed); await login(completed); await integrity(completed);
+  for (const [index, change] of [
+    [1, state => applyAnswer(state, 0)],
+    [1, state => applyPort(state, 8080, true)],
+    [2, state => applyLogin(state, { minLength: 6, blockCommon: false, limitAttempts: false })],
+    [3, state => restoreFile(state, 'notice.txt')],
+  ]) {
+    const state = structuredClone(completed); state.active = index;
+    assert.ok(progress(state).checks.length > 0); assert.ok(progress(state).checks.every(check => check.passed));
+    change(state);
+    assert.equal(progress(state).verified, false); assert.deepEqual(progress(state).checks, []);
+    assert.equal(nextMission(state), false);
+  }
+});
+
+test('미충족 검사 뒤 새 단서와 해시 재계산을 얻으면 이전 검사 결과를 비움', async () => {
+  const state = initialState(); await tutorial(state); await services(state); await login(state);
+  await runCommand(state, 'hash files'); applyAnswer(state, 1); await runCommand(state, 'verify');
+  assert.ok(progress(state).checks.length > 0);
+  await runCommand(state, 'inspect baseline'); assert.deepEqual(progress(state).checks, []);
+  restoreFile(state, 'budget.csv'); await runCommand(state, 'verify');
+  assert.ok(progress(state).checks.some(check => !check.passed));
+  await runCommand(state, 'hash files'); assert.deepEqual(progress(state).checks, []);
+  assert.equal(progress(state).verified, false);
+  await runCommand(state, 'verify'); assert.equal(progress(state).verified, true);
 });

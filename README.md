@@ -56,6 +56,8 @@ Python 서버만 검증하려면 패키지 설치 없이 `python3 -m unittest di
 
 Linux에서 브라우저 시스템 라이브러리가 부족하면 `npx playwright install --with-deps chromium`을 사용합니다. GitHub Actions에도 같은 검증을 구성했습니다.
 
+이미 설치된 Chromium을 테스트에 사용하려면 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`에 실행 파일 경로를 지정합니다. Linux 예: `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm run check`. 지정하지 않으면 Playwright 전용 브라우저를 사용합니다.
+
 - `src/missions.js`: 목표, 허용 명령, 힌트, 설명, 내장 파일
 - `src/engine.js`: 허용 목록 명령 해석, 가상 정책, 상태 판정, SHA-256
 - `src/storage.js`: 진행 저장, 저장 구조 검사, 완료 조건 재판정
