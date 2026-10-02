@@ -1,0 +1,56 @@
+# Security Lab · 보안 체험 게임
+
+고등학생을 위한 브라우저 보안 체험 게임의 첫 프로토타입입니다. 가상의 학교 동아리 자료 서버에서 단서를 조사하고, 원인을 설명하고, 방어를 적용한 뒤 정상 동작을 재검증합니다.
+
+## 실행
+
+Node.js 24 LTS 권장, 22.8 이상 지원. 런타임 패키지 의존성과 백엔드·DB는 없습니다.
+
+```sh
+git clone https://github.com/nu4ddi4/security-lab-game.git
+cd security-lab-game
+npm ci
+npm run dev
+```
+
+브라우저에서 **http://localhost:5173**을 엽니다. `file://`로 직접 열지 마세요. 실행 중 게임 입력을 외부로 전송하지 않습니다. 개발 서버는 `127.0.0.1`에만 바인딩하며 게임 정적 파일만 제공합니다. 종료는 `Ctrl+C`입니다.
+
+개발 도구 설치 없이 실행만 하려면 Node.js 설치 후 `npm run dev`만 실행해도 됩니다. `.nvmrc`, `.editorconfig`, VS Code 확장 추천을 포함합니다.
+
+## 구현된 미션
+
+| 미션 | 조사 | 방어 및 검증 | 연산 범위 |
+| --- | --- | --- | --- |
+| 튜토리얼 | `help`, `inspect approval` | 허용된 조사 범위 선택, `verify` | 시뮬레이션 |
+| 노출된 서비스 | `scan club-server`, `inspect club-server 8080` | 443 유지·8080 차단 → 다시 scan → verify | 시뮬레이션 |
+| 약한 로그인 정책 | `inspect login` | 길이·차단 목록·시도 제한 설정 → 정상 로그인·반복 실패 검증 | 더미 데이터 시뮬레이션 |
+| 변조된 자료 | `inspect baseline`, `hash files` | 변경 파일 선택·원본 복구 → hash files → verify | Web Crypto SHA-256 실제 계산 |
+
+설정은 「방어 설정」 탭에서 변경합니다. 미션은 순서대로 열리며, 원인 설명·방어 적용·정상 기능 재검증을 통과해야 다음 미션으로 이동합니다. 3단계 힌트에는 감점이 없습니다. 진행은 이 브라우저의 localStorage에 저장하며, 현재 미션 및 전체 초기화를 지원합니다. 마지막 미션 완료 후 원인·대응·검증 해설을 제공합니다.
+
+## 개발과 검증
+
+```sh
+npm test
+npx playwright install chromium
+npm run test:e2e
+npm run check
+```
+
+Linux에서 브라우저 시스템 라이브러리가 부족하면 `npx playwright install --with-deps chromium`을 사용합니다. GitHub Actions에도 같은 검증을 구성했습니다.
+
+- `src/missions.js`: 목표, 허용 명령, 힌트, 설명, 내장 파일
+- `src/engine.js`: 허용 목록 명령 해석, 가상 정책, 상태 판정, SHA-256
+- `src/storage.js`: 진행 저장, 저장 구조 검사, 완료 조건 재판정
+- `src/app.js`, `src/style.css`: 한국어 UI, 탭, 키보드 조작, 반응형 화면
+- `tests/`: 핵심 상태 전이 및 PC·모바일 브라우저 테스트
+- `docs/PLAN.md`: 제공받은 원본 계획서
+- `docs/ROADMAP.md`, `docs/VALIDATION.md`: 후속 일정, 검증 기록 및 한계
+
+## 안전 경계와 한계
+
+명령어는 게임 전용 문법입니다. 실제 네트워크 스캔, 로그인 요청, 셸·임의 코드 실행을 하지 않습니다. 실제 IP·URL·개인 파일·비밀번호는 입력 대상이 아닙니다. 입력은 최대 200자이며 동적 출력에 `textContent`를 사용합니다. CSP의 `connect-src 'none'`으로 클라이언트 통신을 제한합니다.
+
+열린 포트는 그 자체로 취약점이 아닙니다. SHA-256 불일치는 바이트 변경을 뜻하며 악성 여부를 판단하지 않습니다. 해시 일치도 비교 기준의 신뢰성을 대신하지 못합니다. 단순 SHA-256은 비밀번호 저장 방식으로 사용하지 않습니다.
+
+정답과 상태는 클라이언트에서 확인·수정할 수 있습니다. 점수는 학습 피드백이며 시험·순위·역량 인증에 쓰지 않습니다. 실제 서버 실습과 선택 암호 퍼즐은 포함하지 않았습니다. 기획의 30–45분 플레이 시간과 교육 효과는 입문자 시연으로 별도 검증해야 합니다.
