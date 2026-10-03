@@ -96,27 +96,11 @@ jobs:
           run-id: ${{ steps.package.outputs.run_id }}
           github-token: ${{ github.token }}
       - name: Assemble release archives
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from hashlib import sha256
-          from zipfile import ZipFile, ZIP_DEFLATED
-          directory = Path('release')
-          directory.mkdir(exist_ok=True)
-          with ZipFile(directory / 'SecurityLab-Windows-x64.zip', 'w', ZIP_DEFLATED) as archive:
-              for name in ['SecurityLab.exe']:
-                  archive.write(Path('portable') / name, name)
-          files = ['SecurityLab-Windows-x64.zip']
-          (directory / 'SHA256SUMS.txt').write_text(''.join(sha256((directory / name).read_bytes()).hexdigest() + '  ' + name + '\n' for name in files))
-          PY
-      - name: Clean previous release downloads
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/clean_release_assets.py
+        run: python3 scripts/assemble_release.py
       - name: Publish portable release
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ steps.package.outputs.sha }}
           RELEASE_TAG: ${{ steps.package.outputs.tag }}
         run: |
-          gh release create "$RELEASE_TAG" release/SecurityLab-Windows-x64.zip release/SHA256SUMS.txt --target "$TARGET_SHA" --title "Security Lab $RELEASE_TAG" --notes-file docs/RELEASE.md --latest
+          gh release create "$RELEASE_TAG" "release/SecurityLab-$RELEASE_TAG-Windows-x64.zip" "release/SecurityLab-$RELEASE_TAG-Windows-x64.exe" "release/SHA256SUMS-$RELEASE_TAG.txt" --target "$TARGET_SHA" --title "Security Lab $RELEASE_TAG" --notes-file docs/RELEASE.md --latest
