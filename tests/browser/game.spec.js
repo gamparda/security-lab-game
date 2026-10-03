@@ -19,6 +19,18 @@ test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용�
   }
 });
 
+test('HTML 응답에 주석이 추가되어도 실제 CSS와 게임 준비가 완료되면 표시함', async ({ page }) => {
+  await page.route('**/', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: (await response.text()) + '\n<!-- response annotation -->' });
+  });
+  await page.goto('/');
+  await expect(page.locator('#loading-screen')).toBeHidden();
+  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
+  await expect(page.locator('.workspace')).toHaveCSS('display', 'grid');
+  await expect(page.locator('#mission-title')).not.toBeEmpty();
+});
+
 test('느린 CSS는 로딩 화면에서 기다리고 적용 후에만 게임을 표시함', async ({ page }) => {
   let release, requested;
   const gate = new Promise(resolve => { release = resolve; });
