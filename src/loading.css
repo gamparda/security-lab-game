@@ -1,0 +1,8 @@
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #e2e9f2; background: #0c121c; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+.loading-screen { box-sizing: border-box; max-width: 680px; margin: 0 auto; padding: 60px 24px; }
+.loading-screen h1 { font-size: 28px; margin: 0 0 14px; }
+.loading-screen p { line-height: 1.75; color: #99a8bc; }
+.loading-screen a { color: #79e3c2; }
+.loading-screen a:focus-visible { outline: 2px solid #79e3c2; outline-offset: 3px; }
