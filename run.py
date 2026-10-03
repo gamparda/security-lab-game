@@ -2,12 +2,18 @@
 """Run Security Lab using only the Python standard library."""
 
 import argparse
+import json
+import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import sys
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+try:
+    APP_VERSION = json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))['version']
+except (OSError, ValueError, KeyError):
+    APP_VERSION = 'unknown'
 PUBLIC_FILES = {
     'index.html': 'text/html; charset=utf-8',
     'src/app.js': 'text/javascript; charset=utf-8',
@@ -27,6 +33,12 @@ CSP = (
 class GameServer(ThreadingHTTPServer):
     # Browsers load several assets concurrently; the Python 3.12 default is 5.
     request_queue_size = 64
+    allow_reuse_address = sys.platform != 'win32'
+
+    def server_bind(self):
+        if sys.platform == 'win32':
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 class GameHandler(BaseHTTPRequestHandler):
@@ -37,6 +49,7 @@ class GameHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Security-Policy', CSP)
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Security-Lab-Version', APP_VERSION)
         try:
             self.end_headers()
             if self.command != 'HEAD':

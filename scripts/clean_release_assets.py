@@ -62,11 +62,14 @@ def main():
             if WEB_ZIP in names:
                 gh('release', 'delete-asset', tag, WEB_ZIP, '--repo', repo, '--yes')
             body = release.get('body') or ''
-            cleaned = ''.join(line for line in body.splitlines(keepends=True) if WEB_ZIP not in line)
-            if cleaned != body:
+            cleaned = ('Windows 10/11 64비트.\n\n'
+                       'ZIP을 풀고 `SecurityLab.exe`를 실행하세요. 소스코드와 별도 런타임 설치는 필요 없습니다.\n'
+                       '플레이하는 동안 실행창을 열어두세요.\n')
+            title = 'Security Lab ' + tag
+            if cleaned != body or release['name'] != title:
                 notes = root / 'notes.md'
                 notes.write_text(cleaned)
-                gh('release', 'edit', tag, '--repo', repo, '--notes-file', str(notes))
+                gh('release', 'edit', tag, '--repo', repo, '--title', title, '--notes-file', str(notes))
         print('Cleaned published downloads:', tag)
 
 
