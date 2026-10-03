@@ -10,16 +10,14 @@ import time
 import traceback
 import webbrowser
 from http.client import HTTPConnection, HTTPException
-from http.server import ThreadingHTTPServer
-
-from run import GameHandler, PUBLIC_FILES, ROOT, main as serve
+from run import GameHandler, GameServer, PUBLIC_FILES, ROOT, main as serve
 
 
 def start_server():
     # Prefer a stable origin so browser saves survive restarts.
     for port in range(5173, 5184):
         try:
-            return ThreadingHTTPServer(('127.0.0.1', port), GameHandler)
+            return GameServer(('127.0.0.1', port), GameHandler)
         except OSError:
             continue
     raise OSError('No available local port (5173–5183). Close another instance and try again.')

@@ -64,7 +64,7 @@ Linux에서 브라우저 시스템 라이브러리가 부족하면 `npx playwrig
 
 이미 설치된 Chromium을 테스트에 사용하려면 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`에 실행 파일 경로를 지정합니다. Linux 예: `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm run check`. 지정하지 않으면 Playwright 전용 브라우저를 사용합니다.
 
-배포할 때는 `package.json`과 잠금 파일의 버전을 올리고 `docs/RELEASE.md`를 갱신한 뒤 PR 검사 통과 후 `main`에 병합합니다. 릴리즈 문서를 변경한 병합에서 버전이 증가하면 Windows 패키징·전체 테스트·실행 창 검증을 거쳐 태그와 Windows ZIP 하나·`SHA256SUMS.txt`를 GitHub 릴리즈에 게시합니다. 버전이 같으면 자동 게시를 건너뜁니다. 버전과 같은 태그(예: `v0.2.3`)를 직접 푸시해도 같은 검증을 수행합니다. 패키징이나 검사 실패 시 릴리즈는 게시하지 않습니다. 수동 게시에서는 같은 커밋의 성공한 Windows 패키징 실행 ID와 버전 태그를 지정합니다.
+배포할 때는 `package.json`과 잠금 파일의 버전을 올리고 `docs/RELEASE.md`를 갱신한 뒤 PR 검사 통과 후 `main`에 병합합니다. 릴리즈 문서를 변경한 병합에서 버전이 증가하면 Windows 패키징·전체 테스트·실행 창 검증을 거쳐 태그와 Windows ZIP 하나·`SHA256SUMS.txt`를 GitHub 릴리즈에 게시합니다. 버전이 같으면 자동 게시를 건너뜁니다. 버전과 같은 태그(예: `v0.2.4`)를 직접 푸시해도 같은 검증을 수행합니다. 패키징이나 검사 실패 시 릴리즈는 게시하지 않습니다. 수동 게시에서는 같은 커밋의 성공한 Windows 패키징 실행 ID와 버전 태그를 지정합니다.
 
 - `src/missions.js`: 목표, 허용 명령, 힌트, 설명, 내장 파일
 - `src/engine.js`: 허용 목록 명령 해석, 가상 정책, 상태 판정, SHA-256

@@ -1,4 +1,5 @@
 import http.client
+from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 from pathlib import Path
 import threading
@@ -65,6 +66,37 @@ class ServerTest(unittest.TestCase):
 
     def test_launcher_requires_all_assets_before_opening(self):
         check_server_assets(self.server.server_port)
+
+    def test_asset_burst_survives_slow_accept_loop(self):
+        class SlowAccept(module.GameServer):
+            def get_request(self):
+                time.sleep(0.015)
+                return super().get_request()
+
+        server = SlowAccept(('127.0.0.1', 0), module.GameHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        gate = threading.Barrier(32)
+        def request(_):
+            connection = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=1.5)
+            try:
+                gate.wait(timeout=5)
+                connection.request('GET', '/src/style.css')
+                response = connection.getresponse()
+                content = response.read()
+                return response.status == 200 and content == (module.ROOT / 'src/style.css').read_bytes()
+            except OSError:
+                return False
+            finally:
+                connection.close()
+
+        try:
+            with ThreadPoolExecutor(max_workers=32) as pool:
+                self.assertTrue(all(pool.map(request, range(32))))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
     def test_launcher_waits_for_slow_asset_response(self):
         class SlowStart(module.GameHandler):
