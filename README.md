@@ -29,4 +29,4 @@ python run.py
 
 검증: `npm ci` → `npx playwright install chromium` → `npm run check`.
 
-[구조](docs/PROJECT_REVIEW.md) · [계획](docs/PLAN.md) · [다음 작업](docs/ROADMAP.md) · [검증](docs/VALIDATION.md) · [배포](docs/DEPLOYMENT.md)
+[구조](docs/PROJECT_REVIEW.md) · [계획](docs/PLAN.md) · [안정화 계획](docs/STABILIZATION_PLAN.md) · [다음 작업](docs/ROADMAP.md) · [검증](docs/VALIDATION.md) · [배포](docs/DEPLOYMENT.md)
