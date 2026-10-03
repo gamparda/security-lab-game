@@ -95,12 +95,6 @@ jobs:
           path: portable
           run-id: ${{ steps.package.outputs.run_id }}
           github-token: ${{ github.token }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: security-lab-web
-          path: release
-          run-id: ${{ steps.package.outputs.run_id }}
-          github-token: ${{ github.token }}
       - name: Assemble release archives
         run: |
           python3 - <<'PY'
@@ -108,16 +102,21 @@ jobs:
           from hashlib import sha256
           from zipfile import ZipFile, ZIP_DEFLATED
           directory = Path('release')
+          directory.mkdir(exist_ok=True)
           with ZipFile(directory / 'SecurityLab-Windows-x64.zip', 'w', ZIP_DEFLATED) as archive:
-              for name in ['SecurityLab.exe', '시작안내.txt']:
+              for name in ['SecurityLab.exe']:
                   archive.write(Path('portable') / name, name)
-          files = ['SecurityLab-Windows-x64.zip', 'security-lab-web.zip']
+          files = ['SecurityLab-Windows-x64.zip']
           (directory / 'SHA256SUMS.txt').write_text(''.join(sha256((directory / name).read_bytes()).hexdigest() + '  ' + name + '\n' for name in files))
           PY
+      - name: Clean previous release downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/clean_release_assets.py
       - name: Publish portable release
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ steps.package.outputs.sha }}
           RELEASE_TAG: ${{ steps.package.outputs.tag }}
         run: |
-          gh release create "$RELEASE_TAG" release/SecurityLab-Windows-x64.zip release/security-lab-web.zip release/SHA256SUMS.txt --target "$TARGET_SHA" --title "Security Lab $RELEASE_TAG · Windows 포터블" --notes-file docs/RELEASE.md --latest
+          gh release create "$RELEASE_TAG" release/SecurityLab-Windows-x64.zip release/SHA256SUMS.txt --target "$TARGET_SHA" --title "Security Lab $RELEASE_TAG · Windows 포터블" --notes-file docs/RELEASE.md --latest

@@ -39,7 +39,7 @@
       await Promise.race([
         import('./app.js'),
         new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Game startup timed out')), timeoutMs);
+          timer = setTimeout(() => reject(new Error('Game startup timed out')), 30000);
         }),
       ]);
     } finally { clearTimeout(timer); }
@@ -61,11 +61,26 @@
       if (!stylesReady() || !document.getElementById('mission-title').textContent.trim()) throw new Error('Game is not ready');
       document.getElementById('game').hidden = false;
       screen.hidden = true;
-    } catch {
+      const address = new URL(location.href);
+      if (address.searchParams.has('startup-retry')) {
+        address.searchParams.delete('startup-retry');
+        history.replaceState(null, '', address);
+      }
+    } catch (error) {
+      console.error('Security Lab startup failed:', phase, error);
+      const address = new URL(location.href);
+      if (phase === 'game' && error.message !== 'Game startup timed out' && !address.searchParams.has('startup-retry')) {
+        message.textContent = '게임 연결을 다시 확인하고 있습니다.';
+        address.searchParams.set('startup-retry', '1');
+        location.replace(address.href);
+        return;
+      }
       screen.setAttribute('aria-busy', 'false');
       message.textContent = phase === 'styles'
         ? '화면을 불러오지 못했습니다. 실행 창을 열어둔 채 다시 불러오기를 눌러주세요.'
-        : '게임을 준비하지 못했습니다. 실행 창을 열어둔 채 다시 불러오기를 눌러주세요.';
+        : error.message === 'Game startup timed out'
+          ? '게임 준비 시간이 오래 걸리고 있습니다. 실행 창을 열어둔 채 다시 불러오기를 눌러주세요.'
+          : '게임을 준비하지 못했습니다. 실행 창을 열어둔 채 다시 불러오기를 눌러주세요.';
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
