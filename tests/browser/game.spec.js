@@ -124,7 +124,19 @@ test('의존 모듈 로딩 실패는 재시도 안내를 표시하고 진행을 
   await expect(page.locator('#mission-title')).toHaveText('약한 로그인 정책');
 });
 
-test('응답하지 않는 게임 모듈은 제한 시간 이후 안내하고 늦게 도착해도 숨김을 유지함', async ({ page }) => {
+test('첫 게임 모듈 요청 실패는 페이지를 한 번 다시 열어 진행을 복원함', async ({ page }) => {
+  const saved = await seedGame(page, await missionState(2));
+  let requests = 0;
+  await page.route('**/src/engine.js', route => ++requests === 1 ? route.abort() : route.continue());
+  await page.reload();
+  await expect(page.locator('#game')).toBeVisible();
+  await expect(page.locator('#mission-title')).toHaveText('약한 로그인 정책');
+  expect(requests).toBe(2);
+  expect(new URL(page.url()).searchParams.has('startup-retry')).toBe(false);
+  expect(await page.evaluate(key => localStorage.getItem(key), SAVE_KEY)).toBe(saved);
+});
+
+test('게임 준비가 8초를 넘어도 30초 이내 완료되면 정상 표시함', async ({ page }) => {
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   await page.clock.install();
@@ -133,7 +145,22 @@ test('응답하지 않는 게임 모듈은 제한 시간 이후 안내하고 늦
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
     await page.clock.fastForward(8001);
-    await expect(page.locator('#loading-message')).toContainText('게임을 준비하지 못했습니다');
+    await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
+    release();
+    await expect(page.locator('#game')).toBeVisible();
+  } finally { release(); }
+});
+
+test('응답하지 않는 게임 모듈은 제한 시간 이후 안내하고 늦게 도착해도 숨김을 유지함', async ({ page }) => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.clock.install();
+  await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
+    await page.clock.fastForward(30001);
+    await expect(page.locator('#loading-message')).toContainText('게임 준비 시간이 오래 걸리고 있습니다');
     release();
     await expect(page.locator('#mission-title')).toHaveText('조사 준비');
     await expect(page.locator('#game')).toBeHidden();

@@ -2,9 +2,11 @@ import http.client
 import importlib.util
 from pathlib import Path
 import threading
+import time
 import unittest
 from http.server import ThreadingHTTPServer
-from launcher import check_server_assets
+from unittest.mock import patch
+from launcher import check_server_assets, wait_for_server_assets
 
 spec = importlib.util.spec_from_file_location('game_server', Path(__file__).resolve().parents[2] / 'run.py')
 module = importlib.util.module_from_spec(spec)
@@ -63,6 +65,57 @@ class ServerTest(unittest.TestCase):
 
     def test_launcher_requires_all_assets_before_opening(self):
         check_server_assets(self.server.server_port)
+
+    def test_launcher_waits_for_slow_asset_response(self):
+        class SlowStart(module.GameHandler):
+            def do_GET(self):
+                if self.path == '/index.html':
+                    time.sleep(2.2)
+                try:
+                    super().do_GET()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), SlowStart)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with self.assertRaises(TimeoutError):
+                check_server_assets(server.server_port)
+            wait_for_server_assets(server.server_port, threading.Event(), timeout=6)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_launcher_retries_transient_failure(self):
+        class FirstRequestFails(module.GameHandler):
+            failed = False
+            def do_GET(self):
+                if not type(self).failed:
+                    type(self).failed = True
+                    self.respond(503, b'Not ready')
+                else:
+                    super().do_GET()
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), FirstRequestFails)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            wait_for_server_assets(server.server_port, threading.Event(), timeout=3)
+            self.assertTrue(FirstRequestFails.failed)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_launcher_retry_expires_or_can_be_cancelled(self):
+        with patch('launcher.check_server_assets', side_effect=OSError('Not ready')):
+            with self.assertRaisesRegex(OSError, 'Not ready'):
+                wait_for_server_assets(0, threading.Event(), timeout=0)
+        cancelled = threading.Event()
+        cancelled.set()
+        wait_for_server_assets(0, cancelled)
 
     def test_launcher_rejects_missing_stylesheet(self):
         class MissingStyle(module.GameHandler):
