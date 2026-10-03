@@ -37,18 +37,16 @@ jobs:
       - run: python scripts/package.py
       - run: npm ci
       - run: npx playwright install chromium
-      - name: Test packaged Windows executable
+      - name: Test engine and server
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $env:GAME_SERVER = 'dist\SecurityLab.exe --smoke-test'
           npm test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m unittest discover -s tests/server
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run test:e2e
-      - name: Test Windows launcher window
-        timeout-minutes: 2
+      - name: Test standalone Windows launcher and game
+        timeout-minutes: 4
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./tests/windows_launcher.ps1

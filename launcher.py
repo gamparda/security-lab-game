@@ -10,7 +10,7 @@ import time
 import traceback
 import webbrowser
 from http.client import HTTPConnection, HTTPException
-from run import GameHandler, GameServer, PUBLIC_FILES, ROOT, main as serve
+from run import APP_VERSION, GameHandler, GameServer, PUBLIC_FILES, ROOT, main as serve
 
 
 def start_server():
@@ -28,27 +28,46 @@ def check_server_assets(port, timeout=2, deadline=None):
         remaining = timeout if deadline is None else min(timeout, deadline - time.monotonic())
         if remaining <= 0:
             raise TimeoutError('Game asset verification timed out')
+        try:
+            bundled = (ROOT / name).read_bytes()
+        except OSError as error:
+            raise OSError(name + ': bundled file unreadable (' + str(error) + ')') from error
         connection = HTTPConnection('127.0.0.1', port, timeout=remaining)
         try:
-            connection.request('GET', '/' + name)
-            response = connection.getresponse()
-            content = response.read()
-            if response.status != 200 or response.getheader('Content-Type') != content_type or content != (ROOT / name).read_bytes():
-                raise OSError('Game asset is not ready: ' + name)
+            try:
+                connection.request('GET', '/' + name)
+                response = connection.getresponse()
+                content = response.read()
+            except TimeoutError as error:
+                raise TimeoutError(name + ': ' + str(error)) from error
+            except (OSError, HTTPException) as error:
+                raise OSError(name + ': ' + str(error)) from error
+            if response.status != 200:
+                raise OSError(f'{name}: HTTP {response.status}')
+            if response.getheader('Content-Type') != content_type:
+                raise OSError(name + ': incorrect file type')
+            if content != bundled:
+                raise OSError(name + ': served file differs from bundled file')
         finally:
             connection.close()
 
 
 def wait_for_server_assets(port, cancelled, timeout=30):
     deadline = time.monotonic() + timeout
+    last_error = None
     while not cancelled.is_set():
+        if last_error is not None and time.monotonic() >= deadline:
+            raise last_error
         try:
             check_server_assets(port, timeout=5, deadline=deadline)
             return
-        except (OSError, ValueError, HTTPException):
+        except (OSError, ValueError, HTTPException) as error:
+            if last_error is not None and time.monotonic() >= deadline:
+                raise last_error
+            last_error = error
             if time.monotonic() >= deadline:
                 raise
-            if cancelled.wait(0.3):
+            if cancelled.wait(min(0.3, max(0, deadline - time.monotonic()))):
                 return
 
 
@@ -66,6 +85,8 @@ def main():
 
     def report(data):
         if args.diagnostics:
+            data = {'version': APP_VERSION, 'bundled': bool(getattr(sys, 'frozen', False)),
+                    'assets': {name: (ROOT / name).is_file() for name in PUBLIC_FILES}, **data}
             args.diagnostics.write_text(json.dumps(data), encoding='utf-8')
 
     import tkinter as tk
@@ -76,8 +97,8 @@ def main():
     except Exception:
         report({'error': traceback.format_exc()})
         raise
-    root.title('Security Lab')
-    root.geometry('460x270')
+    root.title('Security Lab v' + APP_VERSION)
+    root.geometry('460x290')
     root.resizable(False, False)
     root.configure(bg='#111b29')
     try:
@@ -96,7 +117,7 @@ def main():
     tk.Label(root, text='SECURITY LAB', font=('Arial', 22, 'bold'), fg='#79e3c2', bg='#111b29').pack(pady=(24, 12))
     tk.Label(root, text='게임은 브라우저에서 실행됩니다.', font=('맑은 고딕', 11), fg='#e2e9f2', bg='#111b29').pack()
     tk.Label(root, text='플레이하는 동안 이 창을 열어두세요.', font=('맑은 고딕', 10), fg='#99a8bc', bg='#111b29').pack(pady=(5, 0))
-    status = tk.Label(root, text='게임 파일을 확인하고 있습니다.', fg='#99a8bc', bg='#111b29')
+    status = tk.Label(root, text='게임 파일을 확인하고 있습니다.', fg='#99a8bc', bg='#111b29', wraplength=420)
     status.pack(pady=(7, 14))
 
     def open_game():
@@ -116,15 +137,20 @@ def main():
     open_button = tk.Button(buttons, text='게임 다시 열기', command=open_game, state='disabled', font=('맑은 고딕', 10), width=16, bg='#79e3c2', fg='#092c22')
     open_button.pack(side='left', padx=6)
     tk.Button(buttons, text='종료', command=close, font=('맑은 고딕', 10), width=12).pack(side='left', padx=6)
+    error_info = tk.Button(root, text='오류 정보', command=lambda: None)
     root.protocol('WM_DELETE_WINDOW', close)
     def ready(error=None):
         if error is not None:
             report({'error': str(error)})
             reason = '로컬 서버 응답이 늦습니다.' if isinstance(error, TimeoutError) else '로컬 서버의 게임 파일을 확인하지 못했습니다.'
             status.configure(text=reason + '\n준비 다시 시도를 눌러주세요.')
+            detail = 'Security Lab v' + APP_VERSION + '\n' + type(error).__name__ + ': ' + str(error)
+            error_info.configure(command=lambda: messagebox.showerror('Security Lab', detail))
+            error_info.pack(pady=8)
             open_button.configure(text='준비 다시 시도', command=prepare, state='normal')
             return
         status.configure(text=url)
+        error_info.pack_forget()
         open_button.configure(text='게임 다시 열기', command=open_game, state='normal')
         report({'url': url, 'pid': os.getpid(), 'windowVisible': bool(root.winfo_viewable()), 'assetsReady': True})
         if not args.no_browser:

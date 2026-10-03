@@ -67,6 +67,19 @@ class ServerTest(unittest.TestCase):
     def test_launcher_requires_all_assets_before_opening(self):
         check_server_assets(self.server.server_port)
 
+    def test_existing_reusable_listener_cannot_share_game_port(self):
+        legacy = ThreadingHTTPServer(('127.0.0.1', 0), module.GameHandler)
+        try:
+            with self.assertRaises(OSError):
+                module.GameServer(legacy.server_address, module.GameHandler)
+        finally:
+            legacy.server_close()
+
+    def test_readiness_deadline_preserves_asset_failure(self):
+        with patch('launcher.check_server_assets', side_effect=OSError('src/style.css: HTTP 404')):
+            with self.assertRaisesRegex(OSError, 'src/style.css: HTTP 404'):
+                wait_for_server_assets(0, threading.Event(), timeout=0.01)
+
     def test_asset_burst_survives_slow_accept_loop(self):
         class SlowAccept(module.GameServer):
             def get_request(self):
