@@ -7,7 +7,7 @@ import time
 import unittest
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
-from launcher import check_server_assets, wait_for_server_assets
+from tempfile import TemporaryDirectory
 
 spec = importlib.util.spec_from_file_location('game_server', Path(__file__).resolve().parents[2] / 'run.py')
 module = importlib.util.module_from_spec(spec)
@@ -17,7 +17,7 @@ spec.loader.exec_module(module)
 class ServerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), module.GameHandler)
+        cls.server = module.GameServer(('127.0.0.1', 0), module.GameHandler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
 
@@ -64,9 +64,6 @@ class ServerTest(unittest.TestCase):
             with self.subTest(method=method):
                 self.assertEqual(self.request(method, '/')[0], 405)
 
-    def test_launcher_requires_all_assets_before_opening(self):
-        check_server_assets(self.server.server_port)
-
     def test_existing_reusable_listener_cannot_share_game_port(self):
         legacy = ThreadingHTTPServer(('127.0.0.1', 0), module.GameHandler)
         try:
@@ -74,11 +71,6 @@ class ServerTest(unittest.TestCase):
                 module.GameServer(legacy.server_address, module.GameHandler)
         finally:
             legacy.server_close()
-
-    def test_readiness_deadline_preserves_asset_failure(self):
-        with patch('launcher.check_server_assets', side_effect=OSError('src/style.css: HTTP 404')):
-            with self.assertRaisesRegex(OSError, 'src/style.css: HTTP 404'):
-                wait_for_server_assets(0, threading.Event(), timeout=0.01)
 
     def test_asset_burst_survives_slow_accept_loop(self):
         class SlowAccept(module.GameServer):
@@ -111,72 +103,23 @@ class ServerTest(unittest.TestCase):
             server.server_close()
             thread.join()
 
-    def test_launcher_waits_for_slow_asset_response(self):
-        class SlowStart(module.GameHandler):
-            def do_GET(self):
-                if self.path == '/index.html':
-                    time.sleep(2.2)
-                try:
-                    super().do_GET()
-                except (BrokenPipeError, ConnectionResetError):
-                    pass
+    def test_cached_assets_survive_extracted_files_disappearing(self):
+        expected = dict(self.server.assets)
+        with TemporaryDirectory() as directory, patch.object(module, 'ROOT', Path(directory)):
+            for name, content in expected.items():
+                with self.subTest(name=name):
+                    status, _, body = self.request('GET', '/' + name)
+                    self.assertEqual(status, 200)
+                    self.assertEqual(body, content)
 
-        server = ThreadingHTTPServer(('127.0.0.1', 0), SlowStart)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            with self.assertRaises(TimeoutError):
-                check_server_assets(server.server_port)
-            wait_for_server_assets(server.server_port, threading.Event(), timeout=6)
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join()
-
-    def test_launcher_retries_transient_failure(self):
-        class FirstRequestFails(module.GameHandler):
-            failed = False
-            def do_GET(self):
-                if not type(self).failed:
-                    type(self).failed = True
-                    self.respond(503, b'Not ready')
-                else:
-                    super().do_GET()
-
-        server = ThreadingHTTPServer(('127.0.0.1', 0), FirstRequestFails)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            wait_for_server_assets(server.server_port, threading.Event(), timeout=3)
-            self.assertTrue(FirstRequestFails.failed)
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join()
-
-    def test_launcher_retry_expires_or_can_be_cancelled(self):
-        with patch('launcher.check_server_assets', side_effect=OSError('Not ready')):
-            with self.assertRaisesRegex(OSError, 'Not ready'):
-                wait_for_server_assets(0, threading.Event(), timeout=0)
-        cancelled = threading.Event()
-        cancelled.set()
-        wait_for_server_assets(0, cancelled)
-
-    def test_launcher_rejects_missing_stylesheet(self):
-        class MissingStyle(module.GameHandler):
-            def do_GET(self):
-                if self.path == '/src/style.css':
-                    self.respond(404, b'Not found')
-                else:
-                    super().do_GET()
-
-        server = ThreadingHTTPServer(('127.0.0.1', 0), MissingStyle)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            with self.assertRaisesRegex(OSError, 'src/style.css'):
-                check_server_assets(server.server_port)
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join()
+    def test_missing_bundled_file_prevents_listener_start(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, content in self.server.assets.items():
+                if name != 'src/style.css':
+                    target = root / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(content)
+            with patch.object(module, 'ROOT', root):
+                with self.assertRaisesRegex(OSError, 'src/style.css: bundled file unreadable'):
+                    module.GameServer(('127.0.0.1', 0), module.GameHandler)

@@ -30,10 +30,28 @@ CSP = (
 )
 
 
+def load_game_assets():
+    assets = {}
+    for name in PUBLIC_FILES:
+        try:
+            content = (ROOT / name).read_bytes()
+        except OSError as error:
+            raise OSError(name + ': bundled file unreadable (' + str(error) + ')') from error
+        if not content:
+            raise OSError(name + ': bundled file is empty')
+        assets[name] = content
+    return assets
+
+
 class GameServer(ThreadingHTTPServer):
     # Browsers load several assets concurrently; the Python 3.12 default is 5.
     request_queue_size = 64
     allow_reuse_address = sys.platform != 'win32'
+
+    def __init__(self, server_address, handler, bind_and_activate=True, *, assets=None):
+        # Read every bundled file before opening the listener.
+        self.assets = load_game_assets() if assets is None else assets
+        super().__init__(server_address, handler, bind_and_activate)
 
     def server_bind(self):
         if sys.platform == 'win32':
@@ -65,11 +83,7 @@ class GameHandler(BaseHTTPRequestHandler):
         if relative not in PUBLIC_FILES:
             self.respond(404, b'Not found')
             return
-        try:
-            content = (ROOT / relative).read_bytes()
-        except OSError:
-            self.respond(404, b'Not found')
-            return
+        content = self.server.assets[relative]
         self.respond(200, content, PUBLIC_FILES[relative])
 
     do_HEAD = do_GET
