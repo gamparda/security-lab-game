@@ -1,7 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $isolated = Join-Path ([IO.Path]::GetTempPath()) ('Security Lab 테스트 ' + [guid]::NewGuid())
 New-Item -ItemType Directory -Force $isolated | Out-Null
-$exe = Join-Path $isolated 'SecurityLab.exe'
+$expectedVersion = (Get-Content 'package.json' -Raw | ConvertFrom-Json).version
+$exe = Join-Path $isolated ('SecurityLab-v' + $expectedVersion + '-Windows-x64.exe')
 Copy-Item (Resolve-Path 'dist/SecurityLab.exe') $exe
 $first = $null
 $second = $null
@@ -31,7 +32,6 @@ try {
   $diagnostic = Join-Path $isolated 'startup.json'
   $first = Start-IsolatedGame $diagnostic
   $startup = Wait-ForGame $diagnostic
-  $expectedVersion = (Get-Content 'package.json' -Raw | ConvertFrom-Json).version
   if ($startup.version -ne $expectedVersion) { throw 'Executable version mismatch' }
   if ((Test-Path (Join-Path $isolated 'src')) -or (Test-Path (Join-Path $isolated 'index.html'))) { throw 'Game source found next to executable' }
   foreach ($name in $startup.assets.PSObject.Properties.Name) {

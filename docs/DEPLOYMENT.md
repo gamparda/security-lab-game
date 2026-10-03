@@ -2,8 +2,9 @@
 
 ## Windows
 
-- `SecurityLab-Windows-x64.zip`: `SecurityLab.exe` 한 개.
-- `SHA256SUMS.txt`: ZIP 체크섬.
+- `SecurityLab-vX.Y.Z-Windows-x64.exe`: 다운로드 후 바로 실행.
+- `SecurityLab-vX.Y.Z-Windows-x64.zip`: 같은 EXE 한 개.
+- `SHA256SUMS-vX.Y.Z.txt`: ZIP·EXE 체크섬.
 - Windows 10/11 64비트. 소스코드나 별도 런타임 설치 불필요.
 - 플레이하는 동안 실행창을 유지합니다. 종료 버튼으로 서버를 닫습니다.
 - 기본 포트는 5173이며, 사용 중이면 5183까지 찾습니다. 진행은 브라우저·주소·포트별로 저장됩니다.

@@ -4,8 +4,8 @@
 
 ## 실행
 
-1. [최신 릴리즈](https://github.com/nu4ddi4/security-lab-game/releases/latest)의 Windows ZIP을 받습니다.
-2. 압축을 풀고 `SecurityLab.exe`를 실행합니다.
+1. [최신 릴리즈](https://github.com/nu4ddi4/security-lab-game/releases/latest)의 Windows EXE 또는 ZIP을 받습니다.
+2. EXE를 실행합니다. ZIP은 압축을 풀고 안의 EXE를 실행합니다.
 3. 게임을 하는 동안 실행창을 열어둡니다.
 
 Windows 10/11 64비트용입니다. 게임 파일과 Python이 EXE에 포함되어 있어 소스코드·Python·Node.js를 따로 설치하지 않습니다. 진행은 브라우저와 접속 주소별로 저장됩니다.
