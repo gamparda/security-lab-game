@@ -24,6 +24,11 @@ CSP = (
 )
 
 
+class GameServer(ThreadingHTTPServer):
+    # Browsers load several assets concurrently; the Python 3.12 default is 5.
+    request_queue_size = 64
+
+
 class GameHandler(BaseHTTPRequestHandler):
     def respond(self, status, content, content_type='text/plain; charset=utf-8'):
         self.send_response(status)
@@ -32,9 +37,13 @@ class GameHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Security-Policy', CSP)
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cache-Control', 'no-store')
-        self.end_headers()
-        if self.command != 'HEAD':
-            self.wfile.write(content)
+        try:
+            self.end_headers()
+            if self.command != 'HEAD':
+                self.wfile.write(content)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # Reloads and failed asset retries can cancel an in-flight response.
+            pass
 
     def do_GET(self):
         relative = unquote(urlsplit(self.path).path).removeprefix('/')
@@ -73,7 +82,7 @@ def main():
     if not 1 <= args.port <= 65535:
         parser.error('Port must be between 1 and 65535.')
     try:
-        with ThreadingHTTPServer(('127.0.0.1', args.port), GameHandler) as server:
+        with GameServer(('127.0.0.1', args.port), GameHandler) as server:
             print('Security Lab: http://localhost:%d' % args.port, flush=True)
             print('Open this URL in your browser. Stop: Ctrl+C', flush=True)
             server.serve_forever()
