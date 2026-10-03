@@ -21,6 +21,7 @@ PUBLIC_FILES = {
     'src/engine.js': 'text/javascript; charset=utf-8',
     'src/missions.js': 'text/javascript; charset=utf-8',
     'src/storage.js': 'text/javascript; charset=utf-8',
+    'src/loading.css': 'text/css; charset=utf-8',
     'src/style.css': 'text/css; charset=utf-8',
 }
 CSP = (

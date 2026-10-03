@@ -16,7 +16,32 @@ test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용�
     await expect(page.locator('#mission-title')).toHaveText('조사 준비');
     await expect(page.locator('#game')).toBeVisible();
     await expect(page.locator('#loading-screen')).toBeHidden();
+    await expect(page.locator('#loading-retry')).toBeHidden();
   }
+});
+
+test('시작 스크립트가 늦어도 첫 화면은 스타일이 적용되고 재시도 안내는 숨김', async ({ page }) => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/src/bootstrap.js', async route => { await gate; await route.continue(); });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#loading-screen')).toBeVisible();
+    await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
+    await expect(page.locator('#loading-retry')).toBeHidden();
+    await expect(page.locator('#game')).toBeHidden();
+    release();
+    await expect(page.locator('#game')).toBeVisible();
+  } finally { release(); }
+});
+
+test('로딩 화면 스타일 요청이 실패해도 게임 스타일과 초기화가 끝나면 실행함', async ({ page }) => {
+  await page.route('**/src/loading.css', route => route.abort());
+  await page.goto('/');
+  await expect(page.locator('#game')).toBeVisible();
+  await expect(page.locator('#loading-retry')).toBeHidden();
+  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
 });
 
 test('HTML 응답에 주석이 추가되어도 실제 CSS와 게임 준비가 완료되면 표시함', async ({ page }) => {
@@ -41,6 +66,10 @@ test('느린 CSS는 로딩 화면에서 기다리고 적용 후에만 게임을 
     await started;
     await expect(page.locator('#loading-screen')).toBeVisible();
     await expect(page.locator('#game')).toBeHidden();
+    await expect(page.locator('#loading-retry')).toBeHidden();
+    await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
+    // Game initialization can finish while its stylesheet is still pending.
+    await expect(page.locator('#mission-title')).toHaveText('조사 준비');
     release();
     await expect(page.locator('#game')).toBeVisible();
     await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
@@ -67,6 +96,7 @@ test('CSS 재시도도 실패하면 게임을 숨기고 수동 재시도로 진�
   await expect(page.locator('#loading-message')).toContainText('화면을 불러오지 못했습니다');
   await expect(page.locator('#game')).toBeHidden();
   await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#loading-retry')).toBeVisible();
   expect(requests).toBe(2);
   expect(await page.evaluate(key => localStorage.getItem(key), SAVE_KEY)).toBe(saved);
   await page.unroute('**/src/style.css*');
@@ -117,6 +147,7 @@ test('게임 모듈이 느리면 초기화와 진행 복원 완료까지 기다�
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
     await expect(page.locator('#game')).toBeHidden();
+    await expect(page.locator('#loading-retry')).toBeHidden();
     release();
     await expect(page.locator('#game')).toBeVisible();
     await expect(page.locator('#mission-title')).toHaveText('약한 로그인 정책');
@@ -129,6 +160,7 @@ test('의존 모듈 로딩 실패는 재시도 안내를 표시하고 진행을 
   await page.reload();
   await expect(page.locator('#loading-message')).toContainText('게임을 준비하지 못했습니다');
   await expect(page.locator('#game')).toBeHidden();
+  await expect(page.locator('#loading-retry')).toBeVisible();
   expect(await page.evaluate(key => localStorage.getItem(key), SAVE_KEY)).toBe(saved);
   await page.unroute('**/src/engine.js');
   await page.getByRole('link', { name: '다시 불러오기', exact: true }).click();

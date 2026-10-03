@@ -7,13 +7,14 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Security Lab · 보안 체험 게임</title>
     <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="src/loading.css">
     <script async src="src/bootstrap.js"></script>
   </head>
   <body>
     <section id="loading-screen" class="loading-screen" aria-busy="true" aria-labelledby="loading-title">
       <h1 id="loading-title">Security Lab</h1>
       <p id="loading-message" role="status">게임 화면을 불러오는 중입니다.</p>
-      <p>로딩이 멈췄다면 실행 창을 열어둔 채 <a id="loading-retry" href="./">다시 불러오기</a>를 눌러주세요.</p>
+      <p id="loading-actions" hidden><a id="loading-retry" href="./">다시 불러오기</a></p>
       <noscript><p>이 게임을 실행하려면 브라우저에서 JavaScript를 허용해야 합니다.</p></noscript>
     </section>
     <div id="game" hidden>
