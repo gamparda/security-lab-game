@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initialState, progress, runCommand, answerFeedback, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission, score, sha256, accepted, loginSimulation } from '../src/engine.js';
 import { MISSIONS, ORIGINAL_FILES } from '../src/missions.js';
-import { loadGame, saveGame, SAVE_KEY, createSaveSession, CURRENT_SAVE_KEY } from '../src/storage.js';
+import { loadGame, saveGame, SAVE_KEY, createSaveSession, CURRENT_SAVE_KEY, exportGame, importGame } from '../src/storage.js';
 
 async function tutorial(state) {
   await runCommand(state, 'help'); await runCommand(state, 'inspect approval'); applyAnswer(state, 0);
@@ -88,6 +88,17 @@ test('미지원 저장과 변환 백업 실패는 원본을 자동으로 바꾸�
   await assert.rejects(session.save(initialState()), /backup full/);
   assert.equal(storage.getItem(SAVE_KEY), original);
   assert.equal(storage.getItem(CURRENT_SAVE_KEY), null);
+});
+
+test('진행 이동은 완료를 재검증하고 크기·형식·순서 오류를 거부함', async () => {
+  const state = initialState(); await tutorial(state); await services(state); await login(state); await integrity(state);
+  assert.ok((await importGame(exportGame(state))).state.missions.every(m => m.verified));
+  await assert.rejects(importGame('x'.repeat(128 * 1024 + 1)), /크기/);
+  await assert.rejects(importGame('{broken'), /형식/);
+  const tampered = JSON.parse(exportGame(state)); tampered.game.ports[443] = false;
+  await assert.rejects(importGame(JSON.stringify(tampered)), /진행/);
+  tampered.game.active = 0;
+  await assert.rejects(importGame(JSON.stringify(tampered)), /진행/);
 });
 
 test('튜토리얼: 단서와 범위 없이는 완료 불가', async () => {
