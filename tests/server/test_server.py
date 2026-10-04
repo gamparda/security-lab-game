@@ -1,4 +1,5 @@
 import http.client
+import re
 from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 from pathlib import Path
@@ -53,6 +54,14 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(head_body, b'')
         self.assertEqual(head_headers['Content-Length'], headers['Content-Length'])
+
+    def test_startup_guard_is_authorized_by_matching_strict_csp(self):
+        _, headers, body = self.request('GET', '/')
+        policy = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"', body.decode()).group(1)
+        self.assertEqual(headers['Content-Security-Policy'], policy + "; frame-ancestors 'none'")
+        self.assertIn("'sha256-" + module.STARTUP_HASH + "'", policy)
+        self.assertNotIn('unsafe-inline', policy)
+        self.assertNotIn('unsafe-eval', policy)
 
     def test_private_files_and_traversal_denied(self):
         for path in ['/.git/config', '/README.md', '/run.py', '/src/', '/%2e%2e/index.html', '/src/../index.html']:
