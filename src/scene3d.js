@@ -156,15 +156,16 @@ function openTool(kind,label='조사 노트') {
   $('lab-tools').setAttribute('role','dialog'); $('lab-tools').setAttribute('aria-modal','true');
   $('lab-tools').setAttribute('aria-label',label); $('tool-source').textContent=label;
   $('lab-world').inert=true; $('view-switch').disabled=true;
-  currentTab=kind==='admin' ? (mission?.active===0?'terminal':'settings') : kind;
+  currentTab=kind==='admin' ? (mission?.id==='tutorial'?'terminal':'settings') : kind;
   requestTool(currentTab);
   $('lab-tools').scrollTop=0;
   if(kind==='brief') {$('hint-copy').scrollIntoView({block:'center'}); $('hint').focus();}
   else if(currentTab==='terminal') $('command').focus();
   else $('tool-close').focus();
 }
+function nativeDialogOpen() { return Boolean(document.querySelector('dialog[open]')); }
 function closeTool() {
-  if(!toolsOpen || $('reset-dialog').open) return;
+  if(!toolsOpen || nativeDialogOpen()) return;
   toolsOpen=false; $('lab-tools').hidden=true; $('lab-world').inert=false; $('view-switch').disabled=false;
   $('scene-cover').hidden=false; pauseMessage(); $('scene-start').focus();
 }
@@ -203,7 +204,7 @@ export function init3D() {
   observeMission(status=>{
     mission=status; $('hud-title').textContent=status.title; $('hud-objective').textContent=status.objective;
     $('hud-stage').textContent=`${status.stage} · 단서 ${status.clues}개 · ${status.score}/100`;
-    $('hud-mission').textContent=status.active===0?'CASE 001 / 조사 준비':`CASE 001 / MISSION ${String(status.active).padStart(2,'0')}`;
+    $('hud-mission').textContent=status.id==='tutorial'?'CASE 001 / 조사 준비':`CASE 001 / MISSION ${String(status.active).padStart(2,'0')}`;
   });
   $('scene-start').addEventListener('click',lock); $('lab-canvas').addEventListener('click',lock);
   $('scene-retry').addEventListener('click',()=>void loadModel());
@@ -220,8 +221,8 @@ export function init3D() {
   document.addEventListener('keydown',event=>{
     if(event.code==='KeyE' && !event.repeat && player?.controls.isLocked && !toolsOpen) {event.preventDefault(); interaction.interact();}
     if(event.code==='Escape' && player?.controls.isLocked && !toolsOpen) {event.preventDefault();player.controls.unlock();}
-    if(event.code==='Escape' && toolsOpen && !$('reset-dialog').open) {event.preventDefault();closeTool();}
-    if(event.code==='Tab' && toolsOpen && !$('reset-dialog').open) {
+    if(event.code==='Escape' && toolsOpen && !nativeDialogOpen()) {event.preventDefault();closeTool();}
+    if(event.code==='Tab' && toolsOpen && !nativeDialogOpen()) {
       const available=[...$('lab-tools').querySelectorAll('button,input,select,a[href]')].filter(e=>!e.disabled && e.tabIndex>=0 && e.getClientRects().length);
       const first=available[0],last=available.at(-1);
       if(event.shiftKey && document.activeElement===first) {event.preventDefault();last?.focus();}

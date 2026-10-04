@@ -9,15 +9,13 @@
 | `src/bootstrap.js` | CSS·게임 준비 확인 |
 | `run.py` | 게임 파일 전용 로컬 서버 |
 | `launcher.py` | EXE 실행창과 서버 시작 |
+| `instance.py` | 사용자별 단일 실행·인증된 로컬 열기 요청 |
 | `scripts/package.py` | Python·게임 파일을 EXE로 패키징 |
 
-HTML·CSS·JavaScript 구조를 유지합니다. 미션 추가 전 명령·단서 정의와 저장 버전 처리를 정리합니다. 다음 작업은 [ROADMAP.md](ROADMAP.md)에 있습니다.
+HTML·CSS·JavaScript 구조를 유지합니다. 미션은 ID로 정의하고 저장 시 단서·순서·완료 조건을 검사합니다. 다음 작업은 [ROADMAP.md](ROADMAP.md)에 있습니다.
 
-## 추가 검토 결과
+## 안정화 적용
 
-- 여러 탭이 최신 진행을 덮어쓰거나 초기화한 진행을 되살리는 문제를 재현했다.
-- 시작 스크립트 실패의 무한 로딩, 미지원 저장 원본 삭제, 정상 저장 뒤 남는 실패 안내를 확인했다.
-- 브라우저 오류 상세·복사와 포트 변경 시 진행 이동 수단이 부족하다.
-- 초기화 취소와 320·360·390px 서비스 미션 화면은 조사한 Chromium 조건에서 정상이다.
+v0.3.0에서 저장 충돌·원본 보존·시작 복구·오류 복사·진행 이동을 구현했습니다. 다음 행동 안내와 미션 정의 검사도 추가했습니다.
 
-근거, 수정 순서와 완료 기준: [STABILIZATION_PLAN.md](STABILIZATION_PLAN.md).
+적용 내용과 수동 검증: [STABILIZATION_PLAN.md](STABILIZATION_PLAN.md).

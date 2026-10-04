@@ -36,7 +36,7 @@ blender --background --python scripts/build_security_lab.py -- assets/models/sec
 
 화면 중앙에서 2.65 m 이내의 가장 가까운 표면을 Raycast한다. 벽 뒤 장비는 선택되지 않는다. 문을 제외한 상호작용은 기존 화면을 열기만 한다. 명령 자동 실행, 단서 지급, 점수 지급 또는 검증 생략은 없다.
 
-`src/labbridge.js`는 미션 제목·단계·점수 등의 읽기 전용 상태와 도구 열기 요청만 전달한다. `src/app.js`의 기존 이벤트가 실제 조작을 처리하고 `engine.js`, `missions.js`, `storage.js`는 그대로 유지했다. 기존 v1 진행 저장을 유지하며 보기 방식은 별도 키에 저장한다.
+`src/labbridge.js`는 미션 ID·제목·단계·점수 등의 읽기 전용 상태와 도구 열기 요청만 전달한다. `src/app.js`의 기존 이벤트가 실제 조작을 처리하고 최신 main의 `engine.js`, `missions.js`, `storage.js`를 그대로 사용한다. 미션 ID로 기록하는 v2 저장, v1 진행 변환과 원본 백업, 다른 탭의 오래된 저장 차단, 진행 내보내기·가져오기를 유지하며 보기 방식은 별도 키에 저장한다. 3D 도구 창에서도 가져오기와 초기화 대화상자의 키보드 조작을 유지한다.
 
 ## 충돌과 문
 
@@ -48,11 +48,11 @@ blender --background --python scripts/build_security_lab.py -- assets/models/sec
 
 모델 로딩은 진행 표시, 20초 제한, 재시도, 2D 이어하기를 제공한다. 픽셀 비율은 최대 1.5, 그림자는 단일 1024 맵이며 주요 장비만 그림자를 만든다. 고정 환경은 재질별로 묶어 렌더 호출을 줄이고 도구 창이 열려 있는 동안 3D 렌더링을 멈춘다. 숨겨진 탭에서는 이동과 렌더링을 중단한다.
 
-Three.js 0.186.1과 필요한 GLTFLoader·PointerLockControls·유틸리티를 `vendor/three`에 포함한다. Python 및 개발 서버는 이름이 정확히 허용 목록에 있는 파일만 제공한다. 실제 파일 경로가 게임 폴더 안에 있는지도 확인한다. GLB MIME은 `model/gltf-binary`다. CSP는 스크립트·스타일을 self로 제한하며 `unsafe-inline`과 `unsafe-eval`은 허용하지 않는다. connect/image의 blob 허용은 GLB 내부 텍스처를 브라우저에서 디코딩하기 위한 것이며 외부 URL 접속을 허용하지 않는다.
+Three.js 0.186.1과 필요한 GLTFLoader·PointerLockControls·유틸리티를 `vendor/three`에 포함한다. Python 및 개발 서버는 이름이 정확히 허용 목록에 있는 파일만 제공한다. 실제 파일 경로가 게임 폴더 안에 있는지도 확인한다. GLB MIME은 `model/gltf-binary`다. CSP는 self 스크립트·스타일과 정확한 SHA-256으로 승인한 기존 시작 복구 스크립트만 허용한다. `unsafe-inline`과 `unsafe-eval`은 허용하지 않는다. connect/image의 blob 허용은 GLB 내부 텍스처를 브라우저에서 디코딩하기 위한 것이며 외부 URL 접속을 허용하지 않는다.
 
 ## 검증과 한계
 
-`npm ci`, `npm run check`, `tests/windows_launcher.ps1`를 실행한다. 기존 테스트는 `?view=2d`로 모든 원래 동작을 계속 검증한다. 새로운 테스트는 실제 WASD 이동, 마우스, 달리기, 크기 변경, 닫힌 문 충돌, 경첩 회전, 문 닫힘 보호, 장비 5종까지 걸어가는 경로, 도구 창에서 전체 미션 완료, 저장 복원, CSP, 모델 요청 실패·제한 시간을 검사한다. 라이브 카메라를 직접 옮기는 테스트용 텔레포트 API는 없다.
+`npm ci`, `npm run check`, `tests/windows_launcher.ps1`를 실행한다. 기존 테스트는 `?view=2d`로 모든 원래 동작을 계속 검증한다. 새로운 테스트는 실제 WASD 이동, 마우스, 달리기, 크기 변경, 닫힌 문 충돌, 경첩 회전, 문 닫힘 보호, 장비 5종까지 걸어가는 경로, 도구 창에서 전체 미션 완료, 저장 복원, CSP, 모델 요청 실패·제한 시간, 가져오기 대화상자의 Esc·Tab, 3D 도구 창에서 다른 탭의 최신 저장 보호를 검사한다. 3D 이동은 데스크톱 Chromium에서 검증하고 Firefox·WebKit은 기존 2D 도구와 선택한 2D 보기를 검사한다. 라이브 카메라를 직접 옮기는 테스트용 텔레포트 API는 없다.
 
 60 FPS는 일반 GPU 사용 시의 목표이며 모든 학교 PC에서 보장한 수치가 아니다. 하드웨어 가속이 꺼진 소프트웨어 렌더러는 느릴 수 있으므로 2D 보기로 전환할 수 있다. 현재 이동은 평탄한 실내 보행이며 점프·계단 물리·임의 지형 걷기는 범위에 포함되지 않는다. 실제 모바일 기기, Firefox·Safari, 스크린리더 전체 경험은 추가 검증이 필요하다.
 

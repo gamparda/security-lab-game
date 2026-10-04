@@ -15,5 +15,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run check
+        env:
+          SECURITYLAB_CROSS_BROWSER: '1'
+  windows:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/package.yml
+    with:
+      runner: windows-latest

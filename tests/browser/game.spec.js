@@ -1,13 +1,189 @@
 import { test, expect } from '@playwright/test';
 import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin, restoreFile, nextMission } from '../../src/engine.js';
-import { saveGame, SAVE_KEY } from '../../src/storage.js';
+import { saveGame, SAVE_KEY, CURRENT_SAVE_KEY, BACKUP_KEY, exportGame } from '../../src/storage.js';
 import { ORIGINAL_FILES } from '../../src/missions.js';
+
+test('두 탭의 오래된 진행은 전체 초기화 뒤에도 자동 저장을 덮어쓰지 않음', async ({ page, context }) => {
+  await seedGame(page, await missionState(1));
+  const other = await context.newPage(); await other.goto('/?view=2d');
+  await expect(other.locator('#mission-title')).toHaveText('노출된 서비스');
+  await page.locator('#reset-all').click();
+  await page.getByRole('button', { name: '초기화', exact: true }).click();
+  await expect(other.locator('#notice')).toContainText('다른 탭');
+  await other.locator('#hint').click();
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).game.active, CURRENT_SAVE_KEY)).toBe('tutorial');
+  await other.locator('#reload-progress').click();
+  await expect(other.locator('#mission-title')).toHaveText('조사 준비');
+});
+
+test('저장 실패 후 정상 저장은 실패 안내를 해제함', async ({ page }) => {
+  await page.goto('/?view=2d'); await expect(page.locator('#game')).toBeVisible();
+  await page.evaluate(saveKey => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key !== saveKey) return original.call(this, key, value);
+      Storage.prototype.setItem = original;
+      throw new DOMException('Full', 'QuotaExceededError');
+    };
+  }, CURRENT_SAVE_KEY);
+  await page.locator('#hint').click();
+  await expect(page.locator('#notice')).toContainText('저장에 실패');
+  await page.locator('#hint').click();
+  await expect(page.locator('#notice')).toBeEmpty();
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).game.missions[0].hint, CURRENT_SAVE_KEY)).toBe(2);
+});
+
+test('해시 계산 중 다른 탭이 저장해도 늦은 계산이 최신 진행을 덮어쓰지 않음', async ({ page, context }) => {
+  await seedGame(page, await missionState(3));
+  const other = await context.newPage(); await other.goto('/?view=2d');
+  await expect(other.locator('#game')).toBeVisible();
+  await page.evaluate(() => {
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    const gate = new Promise(resolve => { window.finishDigest = resolve; });
+    crypto.subtle.digest = async (...args) => { await gate; return digest(...args); };
+  });
+  const commandFinished = command(page, 'hash files');
+  await expect(page.locator('#command')).toBeDisabled();
+  await other.locator('#hint').click(); await expect(other.locator('#save-status')).not.toHaveText('저장 중…');
+  const saved = await other.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY);
+  await expect(page.locator('#notice')).toContainText('다른 탭');
+  await page.evaluate(() => window.finishDigest()); await commandFinished;
+  expect(await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY)).toBe(saved);
+});
+
+test('시작 스크립트가 차단돼도 오류 정보와 복사·재시도 수단이 표시됨', async ({ page }) => {
+  const requests = [];
+  await page.route('**/src/bootstrap.js*', route => { requests.push(new URL(route.request().url()).search); return route.abort(); });
+  await page.goto('/?view=2d');
+  await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#loading-retry')).toBeVisible();
+  await page.locator('#loading-error summary').click();
+  await expect(page.locator('#loading-detail')).toHaveValue(/src\/bootstrap.js/);
+  await expect(page.locator('#copy-startup-error')).toBeVisible();
+  // Firefox can issue a speculative request for the parser-created script.
+  expect([...new Set(requests)].sort()).toEqual(['', '?retry=1']);
+  expect(requests.filter(query => query === '?retry=1')).toHaveLength(1);
+  await page.unroute('**/src/bootstrap.js*');
+  await page.locator('#loading-retry').click();
+  await expect(page.locator('#game')).toBeVisible();
+});
+
+test('취소된 시작 시도의 늦은 오류는 진행 중인 재시도를 실패시키지 않음', async ({ page }) => {
+  let release, requested;
+  const gate = new Promise(resolve => { release = resolve; });
+  const retryRequest = new Promise(resolve => { requested = resolve; });
+  await page.route('**/src/bootstrap.js*', async route => {
+    if (!new URL(route.request().url()).searchParams.has('retry')) { await route.abort(); return; }
+    requested(); await gate; await route.continue();
+  });
+  try {
+    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' }); await retryRequest;
+    await page.evaluate(() => {
+      const old = document.createElement('script'); old.id = 'bootstrap-entry'; old.dataset.attempt = '0';
+      document.head.append(old); old.dispatchEvent(new Event('error', { bubbles: true })); old.remove();
+    });
+    await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
+    release(); await expect(page.locator('#game')).toBeVisible();
+  } finally { release(); }
+});
+
+test('시작 스크립트 무응답은 두 번의 제한 시간 뒤 끝나고 늦은 파일은 실행하지 않음', async ({ page }) => {
+  let release, first, second, requests = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  const firstRequest = new Promise(resolve => { first = resolve; });
+  const secondRequest = new Promise(resolve => { second = resolve; });
+  await page.clock.install();
+  await page.route('**/src/bootstrap.js*', async route => {
+    if (++requests === 1) first(); else second();
+    await gate; await route.continue();
+  });
+  try {
+    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' }); await firstRequest;
+    await page.clock.fastForward(8001); await secondRequest;
+    await page.clock.fastForward(8001);
+    await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+    release();
+    await expect(page.locator('#game')).toBeHidden();
+    await expect(page.locator('#loading-retry')).toBeVisible();
+  } finally { release(); }
+});
+
+test('클립보드가 막혀도 오류 텍스트를 선택해 복사할 수 있음', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: undefined }));
+  await page.route('**/src/style.css*', route => route.abort());
+  await page.goto('/?view=2d');
+  await page.locator('#loading-error summary').click();
+  await page.locator('#copy-startup-error').click();
+  await expect(page.locator('#loading-detail')).toBeFocused();
+  await expect(page.locator('#copy-startup-error')).toContainText('텍스트 선택됨');
+  expect(await page.locator('#loading-detail').evaluate(field => field.selectionEnd - field.selectionStart)).toBeGreaterThan(10);
+});
+
+test('진행 내보내기·가져오기는 검증과 백업 후 다른 저장 위치에서도 복원함', async ({ page }) => {
+  const state = await missionState(1);
+  await seedGame(page, state);
+  const download = page.waitForEvent('download');
+  await page.locator('#export-progress').click();
+  expect((await download).suggestedFilename()).toBe('SecurityLab-progress.json');
+  await page.locator('#reset-all').click(); await page.getByRole('button', { name: '초기화', exact: true }).click();
+  await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  const before = await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY);
+  await page.locator('#import-progress').click();
+  await page.locator('#progress-file').setInputFiles({ name: 'SecurityLab-progress.json', mimeType: 'application/json', buffer: Buffer.from(exportGame(state)) });
+  await expect(page.locator('#confirm-import')).toBeEnabled(); await page.locator('#confirm-import').click();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+  expect(await page.evaluate(key => localStorage.getItem(key), BACKUP_KEY)).toBe(before);
+  await reloadGame(page); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+});
+
+test('손상·큰 진행 파일은 가져오지 않고 현재 저장을 유지함', async ({ page }) => {
+  await seedGame(page, await missionState(1)); await page.locator('#hint').click();
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  const before = await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY);
+  await page.locator('#import-progress').click();
+  for (const [text, message] of [['{broken', '형식'], ['x'.repeat(128 * 1024 + 1), '크기']]) {
+    await page.locator('#progress-file').setInputFiles({ name: 'SecurityLab-progress.json', mimeType: 'application/json', buffer: Buffer.from(text) });
+    await expect(page.locator('#import-message')).toContainText(message);
+    await expect(page.locator('#confirm-import')).toBeDisabled();
+    expect(await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY)).toBe(before);
+  }
+});
+
+test('다음 행동은 키보드로 조사하고 설명 위치로 이동할 수 있음', async ({ page }) => {
+  await page.goto('/?view=2d');
+  await expect(page.locator('#next-action')).toContainText('게임 명령 사용법');
+  await page.locator('#follow-action').focus(); await page.keyboard.press('Enter');
+  await expect(page.locator('#next-action')).toContainText('승인된 조사 범위');
+  await page.locator('#follow-action').focus(); await page.keyboard.press('Enter');
+  await expect(page.locator('#next-action')).toContainText('원인 설명');
+  await page.locator('#follow-action').click(); await expect(page.locator('#answer-0')).toBeFocused();
+  await page.keyboard.press('Space'); await page.locator('#follow-action').click();
+  await expect(page.locator('#next')).toBeVisible();
+});
+
+test('320px·640px 화면에서 가로 넘침이 없고 접근성 구조가 유지됨', async ({ page }) => {
+  await seedGame(page, await missionState(1));
+  for (const width of [320, 640]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.getByRole('tab', { name: '방어 설정' }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await expect(page.locator('#port-443')).toBeVisible();
+    await page.locator('#import-progress').click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await expect(page.locator('#progress-file')).toBeVisible();
+    await page.keyboard.press('Escape');
+  }
+  const snapshot = await page.locator('main').ariaSnapshot();
+  expect(snapshot).toContain('navigation "미션 진행"');
+  expect(snapshot).toContain('region "다음 행동"');
+});
 
 test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용됨', async ({ page }) => {
   for (let attempt = 0; attempt < 3; attempt++) {
     const stylesheet = page.waitForResponse(response => new URL(response.url()).pathname === '/src/style.css');
     if (attempt === 0) await page.goto('/?view=2d');
-    else await page.reload();
+    else await reloadGame(page);
     const response = await stylesheet;
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toMatch(/^text\/css\b/);
@@ -80,7 +256,7 @@ test('첫 CSS 요청 실패는 한 번 자동 재시도하고 저장된 진행�
   const saved = await seedGame(page, await missionState(1));
   let requests = 0;
   await page.route('**/src/style.css*', route => ++requests === 1 ? route.abort() : route.continue());
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#game')).toBeVisible();
   await expect(page.locator('#loading-screen')).toBeHidden();
   await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
@@ -92,7 +268,7 @@ test('CSS 재시도도 실패하면 게임을 숨기고 수동 재시도로 진�
   const saved = await seedGame(page, await missionState(1));
   let requests = 0;
   await page.route('**/src/style.css*', route => { requests++; return route.abort(); });
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#loading-message')).toContainText('화면을 불러오지 못했습니다');
   await expect(page.locator('#game')).toBeHidden();
   await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
@@ -157,7 +333,7 @@ test('게임 모듈이 느리면 초기화와 진행 복원 완료까지 기다�
 test('의존 모듈 로딩 실패는 재시도 안내를 표시하고 진행을 삭제하지 않음', async ({ page }) => {
   const saved = await seedGame(page, await missionState(2));
   await page.route('**/src/engine.js', route => route.abort());
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#loading-message')).toContainText('게임을 준비하지 못했습니다');
   await expect(page.locator('#game')).toBeHidden();
   await expect(page.locator('#loading-retry')).toBeVisible();
@@ -172,7 +348,7 @@ test('첫 게임 모듈 요청 실패는 페이지를 한 번 다시 열어 진�
   const saved = await seedGame(page, await missionState(2));
   let requests = 0;
   await page.route('**/src/engine.js', route => ++requests === 1 ? route.abort() : route.continue());
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#game')).toBeVisible();
   await expect(page.locator('#mission-title')).toHaveText('약한 로그인 정책');
   expect(requests).toBe(2);
@@ -225,12 +401,16 @@ async function missionState(index, completed = false) {
   }
   return state;
 }
+async function reloadGame(page) {
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  await page.reload();
+}
 async function seedGame(page, state) {
   let saved;
   saveGame(state, { setItem: (_key, value) => { saved = value; } });
   await page.goto('/?view=2d');
-  await page.evaluate(({ key, value }) => localStorage.setItem(key, value), { key: SAVE_KEY, value: saved });
-  await page.reload();
+  await page.evaluate(({ key, value, current }) => { localStorage.removeItem(current); localStorage.setItem(key, value); }, { current: CURRENT_SAVE_KEY, key: SAVE_KEY, value: saved });
+  await reloadGame(page);
   await expect(page.locator('#mission-title')).toHaveText(['조사 준비', '노출된 서비스', '약한 로그인 정책', '변조된 자료'][state.active]);
   return saved;
 }
@@ -269,7 +449,7 @@ test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 �
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'scan club-server'); await command(page, 'verify');
   await page.getByRole('button', { name: '힌트 보기' }).click();
-  await page.reload(); await expect(page.locator('#stage')).toHaveText('검증 완료');
+  await reloadGame(page); await expect(page.locator('#stage')).toHaveText('검증 완료');
   await expect(page.locator('#hint')).toHaveText('힌트 보기 (1/3)');
   await page.getByRole('button', { name: '다음 미션 →' }).click();
   await command(page, 'inspect login');
@@ -292,7 +472,7 @@ test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 �
   await command(page, 'hash files'); await command(page, 'verify');
   await expect(page.locator('#results')).toBeVisible();
   await expect(page.locator('#score')).toHaveText('100 / 100');
-  await page.reload(); await expect(page.locator('#results')).toBeVisible();
+  await reloadGame(page); await expect(page.locator('#results')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.getByRole('button', { name: '전체 초기화', exact: true }).click();
   await page.getByRole('button', { name: '초기화', exact: true }).click();
@@ -342,7 +522,7 @@ test('해시 복원 실패 안내 후 저장을 유지하고 재계산·재검�
   await expect(page.locator('#comparison').getByRole('row', { name: /budget.csv/ }).locator('td').nth(0)).toHaveText('변경 감지');
   await expect(page.locator('#comparison').getByRole('row', { name: /budget.csv/ }).locator('td').nth(1)).toHaveText('다시 조사 필요');
   await page.locator('#hint').click();
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#notice')).toContainText('해시 계산을 완료하지 못했습니다');
   await expect(page.locator('#hint')).toHaveText('힌트 보기 (3/3)');
   await page.evaluate(() => { window.failHash = false; });
@@ -395,7 +575,7 @@ test('파일 복구는 기준·변경 조사 후 열리고 잘못 고른 파일�
   await expect(budget).toBeEnabled();
   await page.getByRole('button', { name: 'notice.txt 선택 및 복구', exact: true }).click();
   await expect(budget).toBeEnabled();
-  await budget.click();
+  await budget.focus(); await page.keyboard.press('Enter');
   await expect(budget).toBeFocused();
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'hash files'); await command(page, 'verify');
@@ -439,7 +619,7 @@ test('설명·포트·파일 변경 후 이전 통과 결과를 지우고 재검
   await page.locator('#port-8080').selectOption('allow');
   await expect(page.locator('#settings')).not.toContainText('✓ 통과');
   await expect(page.locator('#verification-status')).toContainText('재검증이 필요');
-  await page.reload();
+  await reloadGame(page);
   await page.getByRole('tab', { name: '방어 설정' }).click();
   await expect(page.locator('#verification-status')).toContainText('재검증이 필요');
   await expect(page.locator('#next')).toBeHidden();
@@ -488,7 +668,7 @@ test('포트 전후 비교는 정상 서비스와 과도한 차단을 구분하�
   await expect(service.locator('td').nth(1)).toHaveText('다시 조사 필요');
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'scan club-server'); await command(page, 'verify');
-  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  await reloadGame(page); await page.getByRole('tab', { name: '전후 비교' }).click();
   await expect(service.locator('td').nth(0)).toHaveText('접근 허용 · 정상');
   await expect(service.locator('td').nth(1)).toHaveText('접근 차단 · 열람 불가');
   await expect(page.locator('#next')).toBeHidden();
@@ -527,14 +707,14 @@ test('파일 전후 비교는 복구 전 변경 기록을 유지하고 새 계�
   await page.locator('#answer-1').check();
   await page.getByRole('tab', { name: '방어 설정' }).click();
   await page.getByRole('button', { name: 'budget.csv 선택 및 복구', exact: true }).click();
-  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  await reloadGame(page); await page.getByRole('tab', { name: '전후 비교' }).click();
   const budget = page.locator('#comparison').getByRole('row', { name: /budget.csv/ });
   await expect(budget.locator('td').nth(0)).toHaveText('변경 감지');
   await expect(budget.locator('td').nth(1)).toHaveText('다시 조사 필요');
   await expect(page.locator('#results')).toBeHidden();
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'hash files'); await command(page, 'verify');
-  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  await reloadGame(page); await page.getByRole('tab', { name: '전후 비교' }).click();
   await expect(budget.locator('td').nth(0)).toHaveText('변경 감지'); await expect(budget.locator('td').nth(1)).toHaveText('일치');
   await expect(page.locator('#comparison-status')).toContainText('재검증을 모두 통과');
   await expect(page.locator('#answer-feedback')).toContainText('미션을 완료했습니다');

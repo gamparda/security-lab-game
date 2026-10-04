@@ -2,6 +2,9 @@
 """Run Security Lab using only the Python standard library."""
 
 import argparse
+import base64
+import hashlib
+import re
 import json
 import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -38,8 +41,14 @@ PUBLIC_FILES = {
     'vendor/three/examples/jsm/utils/SkeletonUtils.js': 'text/javascript; charset=utf-8',
     'vendor/three/examples/jsm/controls/PointerLockControls.js': 'text/javascript; charset=utf-8',
 }
+try:
+    _html = (ROOT / 'index.html').read_text(encoding='utf-8')
+    _guard = re.search(r'<script id="startup-guard">(.*?)</script>', _html, re.S).group(1)
+except (OSError, AttributeError):
+    _guard = ''  # The launcher reports unreadable assets before opening a listener.
+STARTUP_HASH = base64.b64encode(hashlib.sha256(_guard.encode()).digest()).decode()
 CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self'; "
+    "default-src 'self'; script-src 'self' 'sha256-" + STARTUP_HASH + "'; style-src 'self'; "
     "connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )

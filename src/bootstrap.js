@@ -1,4 +1,6 @@
 (() => {
+  const guard = window.SecurityLabStartup;
+  if (!guard?.claim(document.currentScript?.dataset.attempt)) return;
   const timeoutMs = 8000;
   const stylesReady = () => getComputedStyle(document.documentElement)
     .getPropertyValue('--game-styles-ready').trim() === '1';
@@ -71,6 +73,7 @@
       if (!stylesReady() || !document.getElementById('mission-title').textContent.trim()) {
         throw new StartupFailure('game', new Error('Game is not ready'));
       }
+      if (!guard.ready()) return;
       document.getElementById('game').hidden = false;
       screen.hidden = true;
       // The original tools are ready before optional WebGL starts. A 3D failure never
@@ -94,13 +97,7 @@
         location.replace(address.href);
         return;
       }
-      screen.setAttribute('aria-busy', 'false');
-      actions.hidden = false;
-      message.textContent = phase === 'styles'
-        ? '화면을 불러오지 못했습니다. 실행 창을 열어둔 채 다시 불러오기를 눌러주세요.'
-        : error.message === 'Game startup timed out'
-          ? '게임 준비 시간이 오래 걸리고 있습니다. 실행 창을 열어둔 채 다시 불러오기를 눌러주세요.'
-          : '게임을 준비하지 못했습니다. 실행 창을 열어둔 채 다시 불러오기를 눌러주세요.';
+      guard.fail(phase, phase === 'styles' ? 'src/style.css' : 'src/app.js', error);
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });

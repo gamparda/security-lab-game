@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { SAVE_KEY } from '../../src/storage.js';
+import { CURRENT_SAVE_KEY } from '../../src/storage.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -37,14 +37,15 @@ async function closeAndResume(page) {
 }
 
 test('3D actual movement, closed-door collision, hinge rotation, mouse and pause',async({page},testInfo)=>{
-  test.skip(testInfo.project.name==='mobile','Mouse and keyboard navigation uses the desktop project.');
+  test.skip(testInfo.project.name!=='desktop','3D navigation is validated on desktop Chromium; other projects cover the 2D tools.');
   const errors=[],violations=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.cspErrors=(window.cspErrors||[]).concat(e.violatedDirective)));
   await start(page);
   const initial=await diagnostics(page);
   expect(initial.position[1]).toBe(1.65); expect(initial.colliders).toBeGreaterThan(25);
-  await walkUntil(page,'KeyW',d=>d.position[2]<10.25);
+  // Collision can leave up to one 0.08 m substep of clearance at slower frame rates.
+  await walkUntil(page,'KeyW',d=>d.position[2]<10.4);
   await page.keyboard.down('KeyW'); await page.waitForTimeout(350); await page.keyboard.up('KeyW');
   expect((await diagnostics(page)).position[2]).toBeGreaterThan(10.2);
   await expect(page.locator('#interaction-prompt')).toContainText('문 열기');
@@ -79,7 +80,7 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
 });
 
 test('walk to all five devices; old tools, scoring, save and mission guards stay intact',async({page},testInfo)=>{
-  test.skip(testInfo.project.name==='mobile','Detailed spatial route is tested with desktop input.');
+  test.skip(testInfo.project.name!=='desktop','Detailed spatial route uses desktop Chromium input.');
   test.setTimeout(120000);
   await start(page); await page.keyboard.press('KeyE'); await page.waitForTimeout(550);
   await capture(page,'02-door-open.png');
@@ -115,8 +116,9 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await capture(page,'04-terminal-overlay.png');
   await page.locator('#command').fill('scan club-server'); await page.locator('#command').press('Enter');
   await expect(page.locator('#terminal')).toContainText('8080');
-  const save=await page.evaluate(key=>localStorage.getItem(key),SAVE_KEY);
-  expect(JSON.parse(save).active).toBe(1);
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  const save=await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);
+  expect(JSON.parse(save).game.active).toBe('services');
   await closeAndResume(page);
   // Leave the server suite through the same physical doorway, then the whiteboard.
   await aim(page,-5.3,1.65,0); await walkUntil(page,'KeyW',d=>d.position[2]>0);
@@ -150,11 +152,11 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await page.keyboard.press('Escape'); await page.locator('#world-2d').click();
   await expect(page.locator('#lab-tools')).toBeVisible();
   await page.reload(); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
-  expect(await page.evaluate(key=>localStorage.getItem(key),SAVE_KEY)).toBe(save);
+  expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(save);
 });
 
 test('door closing stops for a player in its sweep, then closes when clear',async({page},testInfo)=>{
-  test.skip(testInfo.project.name==='mobile');
+  test.skip(testInfo.project.name!=='desktop');
   await start(page); await page.keyboard.press('KeyE'); await page.waitForTimeout(550);
   await walkUntil(page,'KeyW',d=>d.position[2]<9.88);
   await aim(page,-.72,1.4,9.4);
@@ -169,7 +171,7 @@ test('door closing stops for a player in its sweep, then closes when clear',asyn
 });
 
 test('all original missions finish inside the 3D overlay and restore after reload',async({page},testInfo)=>{
-  test.skip(testInfo.project.name==='mobile');
+  test.skip(testInfo.project.name!=='desktop');
   const command=async text=>{
     await page.getByRole('tab',{name:'가상 터미널'}).click();
     await page.locator('#command').fill(text); await page.locator('#command').press('Enter');
@@ -189,13 +191,14 @@ test('all original missions finish inside the 3D overlay and restore after reloa
   await page.getByRole('tab',{name:'방어 설정'}).click(); await page.locator('[data-restore="budget.csv"]').click();
   await command('hash files'); await command('verify');
   await expect(page.locator('#results')).toBeVisible(); await expect(page.locator('#score')).toHaveText('100 / 100');
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
   await page.reload(); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready');
   await page.locator('#world-notes').click(); await expect(page.locator('#results')).toBeVisible();
   await expect(page.locator('.mission-step.complete')).toHaveCount(4);
 });
 
 test('model failure offers retry and 2D continuation; no external requests',async({page},testInfo)=>{
-  test.skip(testInfo.project.name==='mobile');
+  test.skip(testInfo.project.name!=='desktop');
   const external=[];
   page.on('request',r=>{if(/^https?:/.test(r.url()) && new URL(r.url()).origin!==new URL(testInfo.project.use.baseURL||process.env.GAME_URL||'http://localhost:5173').origin) external.push(r.url());});
   await page.route('**/assets/models/security_lab.glb',route=>route.abort());
@@ -214,6 +217,10 @@ test('unresponsive model has a bounded loading timeout and mobile defaults to to
     await page.goto('/'); await expect(page.locator('#lab-tools')).toBeVisible();
     await expect(page.locator('#lab-world')).toBeHidden(); return;
   }
+  if(testInfo.project.name!=='desktop') {
+    await page.goto('/?view=2d'); await expect(page.locator('#lab-tools')).toBeVisible();
+    await expect(page.locator('#lab-world')).toBeHidden(); return;
+  }
   await page.clock.install();
   await page.route('**/assets/models/security_lab.glb',()=>new Promise(()=>{}));
   await page.goto('/?view=3d');
@@ -221,4 +228,32 @@ test('unresponsive model has a bounded loading timeout and mobile defaults to to
   await page.clock.fastForward(21000);
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
   await page.locator('#scene-fallback').click(); await expect(page.locator('#mission-title')).toBeVisible();
+});
+
+test('3D tools preserve native dialogs and reject stale saves from another tab',async({page,context},testInfo)=>{
+  test.skip(testInfo.project.name!=='desktop');
+  await start(page); await page.keyboard.press('Escape'); await page.locator('#world-notes').click();
+  await page.locator('#hint').click();
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  const saved=await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);
+  await page.locator('#import-progress').click();
+  await expect(page.locator('#import-dialog')).toBeVisible();
+  await page.locator('#import-dialog button[value="cancel"]').focus();
+  await page.keyboard.press('Shift+Tab'); await expect(page.locator('#progress-file')).toBeFocused();
+  await page.keyboard.press('Escape'); await expect(page.locator('#import-dialog')).toBeHidden();
+  await expect(page.locator('#lab-tools')).toBeVisible();
+  await page.locator('#reset-all').click(); await page.keyboard.press('Escape');
+  await expect(page.locator('#reset-dialog')).toBeHidden(); await expect(page.locator('#lab-tools')).toBeVisible();
+  expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(saved);
+  const other=await context.newPage(); await other.goto('/?view=2d');
+  await expect(other.locator('#hint')).toHaveText('힌트 보기 (1/3)');
+  await other.locator('#hint').click(); await expect(other.locator('#save-status')).not.toHaveText('저장 중…');
+  const latest=await other.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);
+  await expect(page.locator('#notice')).toContainText('다른 탭');
+  await page.locator('#hint').click();
+  expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(latest);
+  await page.locator('#reload-progress').click();
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await page.locator('#world-notes').click(); await expect(page.locator('#hint')).toHaveText('힌트 보기 (2/3)');
+  expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(latest);
 });
