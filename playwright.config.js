@@ -25,10 +25,10 @@ export default defineConfig({
   use: {
     baseURL: process.env.GAME_URL || 'http://localhost:5173',
     headless: true,
-    // Avoid continuous GPU readbacks while testing real input with Windows
-    // software graphics. Keep action/DOM traces and explicit screenshots.
+    // Keep tracing work away from live Windows software graphics. Action and
+    // console traces remain; explicit screenshots still run where required.
     trace: isWindows && process.env.CI
-      ? {mode:'retain-on-failure',screenshots:false} : 'retain-on-failure',
+      ? {mode:'retain-on-failure',screenshots:false,snapshots:false} : 'retain-on-failure',
   },
   webServer: process.env.GAME_URL ? undefined : { command: process.env.GAME_SERVER || (isWindows ? 'python run.py' : 'python3 run.py'), url: 'http://localhost:5173', reuseExistingServer: !process.env.CI },
   projects: [
