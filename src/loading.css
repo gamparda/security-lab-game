@@ -6,3 +6,6 @@ body { margin: 0; }
 .loading-screen p { line-height: 1.75; color: #99a8bc; }
 .loading-screen a { color: #79e3c2; }
 .loading-screen a:focus-visible { outline: 2px solid #79e3c2; outline-offset: 3px; }
+
+.loading-screen textarea { box-sizing: border-box; width: 100%; color: inherit; background: #111b29; padding: 12px; border: 1px solid #45556b; }
+.loading-screen button { margin-top: 12px; padding: 8px 16px; cursor: pointer; }

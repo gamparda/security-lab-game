@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { dirname, extname, resolve, sep } from 'node:path';
@@ -6,9 +7,12 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 const publicFiles = new Set(['index.html', 'src/bootstrap.js', 'src/app.js', 'src/engine.js', 'src/missions.js', 'src/storage.js', 'src/loading.css', 'src/style.css']);
+const html = (await readFile(resolve(root, 'index.html'), 'utf8')).replaceAll('\r\n', '\n');
+const guard = html.match(/<script id="startup-guard">([\s\S]*?)<\/script>/)[1];
+const startupHash = createHash('sha256').update(guard).digest('base64');
 const server = createServer(async (req, res) => {
   const headers = {
-    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'sha256-" + startupHash + "'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',
   };

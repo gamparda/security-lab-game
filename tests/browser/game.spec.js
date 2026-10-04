@@ -32,6 +32,53 @@ test('저장 실패 후 정상 저장은 실패 안내를 해제함', async ({ p
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).game.missions[0].hint, CURRENT_SAVE_KEY)).toBe(2);
 });
 
+test('시작 스크립트가 차단돼도 오류 정보와 복사·재시도 수단이 표시됨', async ({ page }) => {
+  let requests = 0;
+  await page.route('**/src/bootstrap.js*', route => { requests++; return route.abort(); });
+  await page.goto('/');
+  await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#loading-retry')).toBeVisible();
+  await page.locator('#loading-error summary').click();
+  await expect(page.locator('#loading-detail')).toHaveValue(/src\/bootstrap.js/);
+  await expect(page.locator('#copy-startup-error')).toBeVisible();
+  expect(requests).toBe(2);
+  await page.unroute('**/src/bootstrap.js*');
+  await page.locator('#loading-retry').click();
+  await expect(page.locator('#game')).toBeVisible();
+});
+
+test('시작 스크립트 무응답은 두 번의 제한 시간 뒤 끝나고 늦은 파일은 실행하지 않음', async ({ page }) => {
+  let release, first, second, requests = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  const firstRequest = new Promise(resolve => { first = resolve; });
+  const secondRequest = new Promise(resolve => { second = resolve; });
+  await page.clock.install();
+  await page.route('**/src/bootstrap.js*', async route => {
+    if (++requests === 1) first(); else second();
+    await gate; await route.continue();
+  });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' }); await firstRequest;
+    await page.clock.fastForward(8001); await secondRequest;
+    await page.clock.fastForward(8001);
+    await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+    release();
+    await expect(page.locator('#game')).toBeHidden();
+    await expect(page.locator('#loading-retry')).toBeVisible();
+  } finally { release(); }
+});
+
+test('클립보드가 막혀도 오류 텍스트를 선택해 복사할 수 있음', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: undefined }));
+  await page.route('**/src/style.css*', route => route.abort());
+  await page.goto('/');
+  await page.locator('#loading-error summary').click();
+  await page.locator('#copy-startup-error').click();
+  await expect(page.locator('#loading-detail')).toBeFocused();
+  await expect(page.locator('#copy-startup-error')).toContainText('텍스트 선택됨');
+  expect(await page.locator('#loading-detail').evaluate(field => field.selectionEnd - field.selectionStart)).toBeGreaterThan(10);
+});
+
 test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용됨', async ({ page }) => {
   for (let attempt = 0; attempt < 3; attempt++) {
     const stylesheet = page.waitForResponse(response => new URL(response.url()).pathname === '/src/style.css');

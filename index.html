@@ -4,17 +4,79 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#111a28">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-xYwV37A+arRHUmr3BRmQ7ayf58hQtlweP3B1WSSUi+Y='; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Security Lab · 보안 체험 게임</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="src/loading.css">
-    <script async src="src/bootstrap.js"></script>
+    <script id="startup-guard">
+(() => {
+  let attempt = 0, claimed = false, finished = false, timer;
+  const whenReady = action => document.readyState === 'loading'
+    ? document.addEventListener('DOMContentLoaded', action, { once: true }) : action();
+  const guard = window.SecurityLabStartup = {
+    claim(value) {
+      if (finished || claimed || Number(value) !== attempt) return false;
+      claimed = true; clearTimeout(timer); return true;
+    },
+    get stopped() { return finished; },
+    ready() { if (finished) return false; finished = true; clearTimeout(timer); return true; },
+    fail(phase, file, error) {
+      if (finished) return;
+      finished = true; clearTimeout(timer);
+      whenReady(() => {
+        document.getElementById('game').hidden = true;
+        document.getElementById('loading-screen').setAttribute('aria-busy', 'false');
+        document.getElementById('loading-actions').hidden = false;
+        document.getElementById('loading-error').hidden = false;
+        document.getElementById('loading-message').textContent = phase === 'styles'
+          ? '화면을 불러오지 못했습니다. 다시 불러오기를 눌러주세요.'
+          : error?.message === 'Game startup timed out'
+            ? '게임 준비 시간이 오래 걸리고 있습니다. 다시 불러오기를 눌러주세요.'
+            : '게임을 준비하지 못했습니다. 다시 불러오기를 눌러주세요.';
+        document.getElementById('loading-detail').value = '단계: ' + phase + '\n파일: ' + file + '\n오류: ' + String(error?.message || error).slice(0, 2000);
+      });
+    },
+  };
+  function retry(reason) {
+    if (finished || claimed) return;
+    clearTimeout(timer);
+    if (attempt === 1) { guard.fail('entry', 'src/bootstrap.js', reason); return; }
+    attempt++;
+    document.getElementById('bootstrap-entry')?.remove();
+    const script = document.createElement('script');
+    script.id = 'bootstrap-entry'; script.dataset.attempt = String(attempt);
+    script.async = true; script.src = 'src/bootstrap.js?retry=1';
+    document.head.append(script);
+    timer = setTimeout(() => retry('Start script timed out (8s)'), 8000);
+  }
+  window.addEventListener('error', event => {
+    if (event.target?.id === 'bootstrap-entry') retry('Start script failed to load');
+  }, true);
+  timer = setTimeout(() => retry('Start script timed out (8s)'), 8000);
+  whenReady(() => {
+    const address = new URL(location.href); address.searchParams.delete('startup-retry');
+    document.getElementById('loading-retry').href = address.href;
+    document.getElementById('copy-startup-error').addEventListener('click', async event => {
+      const field = document.getElementById('loading-detail'), button = event.currentTarget;
+      try {
+        await navigator.clipboard.writeText(field.value);
+        button.textContent = '복사 완료';
+      } catch {
+        field.focus(); field.select();
+        document.getElementById('copy-startup-error').textContent = '텍스트 선택됨 · 복사하세요';
+      }
+    });
+  });
+})();
+</script>
+    <script id="bootstrap-entry" data-attempt="0" async src="src/bootstrap.js"></script>
   </head>
   <body>
     <section id="loading-screen" class="loading-screen" aria-busy="true" aria-labelledby="loading-title">
       <h1 id="loading-title">Security Lab</h1>
       <p id="loading-message" role="status">게임 화면을 불러오는 중입니다.</p>
       <p id="loading-actions" hidden><a id="loading-retry" href="./">다시 불러오기</a></p>
+      <details id="loading-error" hidden><summary>오류 정보</summary><textarea id="loading-detail" aria-label="시작 오류 정보" readonly rows="5"></textarea><button id="copy-startup-error">오류 복사</button></details>
       <noscript><p>이 게임을 실행하려면 브라우저에서 JavaScript를 허용해야 합니다.</p></noscript>
     </section>
     <div id="game" hidden>
