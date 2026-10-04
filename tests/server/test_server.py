@@ -71,6 +71,36 @@ class ServerTest(unittest.TestCase):
     def request(self, method, path):
         return request_port(self.server.server_port, method, path)
 
+    def test_http11_reuses_socket_and_frames_head_errors_and_rejected_bodies(self):
+        connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=3)
+        try:
+            original_socket = None
+            for method, path, expected in [
+                ('GET', '/src/app.js', 200),
+                ('HEAD', '/src/style.css', 200),
+                ('GET', '/missing.js', 404),
+                ('GET', '/__scene__/reuse-1/vendor/three/build/three.core.js', 200),
+            ]:
+                connection.request(method, path)
+                response = connection.getresponse()
+                body = response.read()
+                self.assertEqual(response.status, expected)
+                self.assertEqual(response.version, 11)
+                self.assertFalse(response.will_close)
+                if method == 'HEAD':
+                    self.assertEqual(body, b'')
+                if original_socket is None:
+                    original_socket = connection.sock
+                self.assertIs(connection.sock, original_socket)
+            connection.request('POST', '/', body=b'unread body')
+            response = connection.getresponse()
+            self.assertEqual(response.status, 405)
+            self.assertTrue(response.will_close)
+            self.assertEqual(response.read(), b'Method not allowed')
+            self.assertIsNone(connection.sock)
+        finally:
+            connection.close()
+
     def test_public_assets_and_security_headers(self):
         for name, content_type in module.PUBLIC_FILES.items():
             with self.subTest(name=name):

@@ -1,9 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect as baseExpect } from '@playwright/test';
 import { initialState, runCommand, applyAnswer, nextMission } from '../../src/engine.js';
 import { CURRENT_SAVE_KEY, SAVE_KEY, encodeGame, exportGame } from '../../src/storage.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+const expect=baseExpect.configure({timeout:process.platform==='win32' && process.env.CI ? 20000 : 5000});
 const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene-entry.js')).get3DDiagnostics());
 const VIEW_KEY='security-lab-view';
 const desktop3D=testInfo=>['desktop','windows-edge'].includes(testInfo.project.name);
@@ -13,7 +14,7 @@ test.beforeEach(async({page},testInfo)=>{
     // Hosted runners use software graphics. Keep the real scene, collisions,
     // rendering and input, at a smaller viewport rather than bypassing them.
     await page.setViewportSize({width:640,height:480});
-    testInfo.setTimeout(60000);
+    testInfo.setTimeout(process.platform==='win32' ? 120000 : 60000);
   }
 });
 async function savedGame(page) {
@@ -96,7 +97,9 @@ async function walkUntil(page,key,condition,timeout=16000) {
   },{key,condition,timeout});
   await page.keyboard.down(key);
   try {
-    await expect.poll(()=>page.evaluate(()=>window.__labWalk.done),{timeout:timeout+5000,intervals:[40,70,100]}).toBe(true);
+    // The in-page physical deadline stays unchanged; allow a delayed native
+    // graphics/automation response to deliver its result after that deadline.
+    await expect.poll(()=>page.evaluate(()=>window.__labWalk.done),{timeout:timeout+30000,intervals:[40,70,100]}).toBe(true);
     expect(await page.evaluate(()=>window.__labWalk.error)).toBeNull();
   } finally {
     await page.evaluate(()=>{window.__labWalk?.cancel(); delete window.__labWalk;});

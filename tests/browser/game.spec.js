@@ -476,6 +476,8 @@ async function seedGame(page, state) {
   let saved;
   saveGame(state, { setItem: (_key, value) => { saved = value; } });
   await page.goto('/?view=2d');
+  await expect(page.locator('#game')).toBeVisible({ timeout: 35000 });
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
   await page.evaluate(({ key, value, current }) => { localStorage.removeItem(current); localStorage.setItem(key, value); }, { current: CURRENT_SAVE_KEY, key: SAVE_KEY, value: saved });
   await reloadGame(page);
   await expect(page.locator('#mission-title')).toHaveText(['조사 준비', '노출된 서비스', '약한 로그인 정책', '변조된 자료'][state.active]);
