@@ -9,6 +9,6 @@ test-results/
 .DS_Store
 *.log
 __pycache__/
-build/
+/build/
 dist/
 *.spec

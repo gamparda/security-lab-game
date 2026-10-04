@@ -1,8 +1,20 @@
 import { MISSIONS, ORIGINAL_FILES } from './missions.js';
 import { initialState, missionId, nextAction, progress, stage, score, runCommand, answerFeedback, accepted, loginSimulation, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
 import { createSaveSession, CURRENT_SAVE_KEY, SAVE_KEY, BACKUP_KEY, exportGame, importGame, MAX_IMPORT_BYTES } from './storage.js';
+import { publishMission, onToolRequest } from './labbridge.js';
+import { initSceneView } from './scene-entry.js';
 
 const $ = id => document.getElementById(id);
+for (const dialog of document.querySelectorAll('dialog')) {
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab' || !dialog.open) return;
+    const controls = [...dialog.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')]
+      .filter(control => !control.disabled && control.tabIndex >= 0 && control.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  });
+}
 const el = (tag, text, className) => {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -128,6 +140,7 @@ function switchTab(name) {
     $('panel-' + tab.dataset.tab).hidden = !selected;
   }
 }
+onToolRequest(name => { if (name !== 'brief') switchTab(name); });
 function render() {
   const focused = document.activeElement;
   $('command').disabled = busy; $('command-form').querySelector('button').disabled = busy;
@@ -174,6 +187,8 @@ function render() {
   $('reset-mission').disabled = busy;
   $('reset-all').disabled = busy;
   renderSettings(); renderFiles(); renderComparison(); renderResults();
+  publishMission({ id: missionId(state), missionId: missionId(state), active: state.active, title: m.title,
+    objective: m.objective, nextAction: action.text, stage: stage(state), score: score(state), clues: p.clues.length, busy });
   const commands = m.quickCommands;
   $('quick-commands').replaceChildren(...commands.map(command => {
     const button = el('button', command); button.id = 'quick-' + m.id + '-' + command.replaceAll(' ', '-'); button.disabled = busy;
@@ -355,3 +370,4 @@ $('reset-dialog').addEventListener('close', () => {
 });
 render();
 log('SECURITY LAB / 가상 조사 환경에 오신 것을 환영합니다.\n' + MISSIONS[state.active].objective + '\nhelp로 게임 명령을 확인하세요.');
+initSceneView();

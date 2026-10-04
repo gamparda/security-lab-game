@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#111a28">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-m3X0T7Cfyid8U2HUdHQ+RHLSA48NGjWLjusnSVQw7Dw='; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-m3X0T7Cfyid8U2HUdHQ+RHLSA48NGjWLjusnSVQw7Dw='; style-src 'self'; connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Security Lab · 보안 체험 게임</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="src/loading.css">
@@ -80,12 +80,28 @@
       <noscript><p>이 게임을 실행하려면 브라우저에서 JavaScript를 허용해야 합니다.</p></noscript>
     </section>
     <div id="game" hidden>
+    <section id="lab-world" class="lab-world" aria-label="3D 보안 실습실" hidden>
+      <canvas id="lab-canvas" tabindex="0" aria-label="3D 실습실. WASD 이동, 마우스 시점, E 상호작용, Esc 일시정지"></canvas>
+      <div class="world-actions"><button id="world-notes">조사 노트</button><button id="world-reset">출입구로 돌아가기</button><button id="world-2d">2D 도구 화면</button></div>
+      <aside class="mission-hud"><p id="hud-mission" class="eyebrow">CASE 001</p><h2 id="hud-title">조사 준비</h2><p id="hud-objective"></p><p id="hud-stage" class="hud-stage"></p></aside>
+      <span id="crosshair" class="crosshair" aria-hidden="true" hidden></span>
+      <p id="interaction-prompt" class="interaction-prompt" role="status" hidden></p>
+      <div class="world-footer"><span><kbd>W A S D</kbd> 이동 &nbsp; <kbd>SHIFT</kbd> 달리기 &nbsp; <kbd>E</kbd> 조사 &nbsp; <kbd>ESC</kbd> 일시정지</span><span id="world-location">SECURITY OPERATIONS / TRAINING FACILITY</span></div>
+      <div id="scene-cover" class="scene-cover"><div class="scene-card">
+        <p class="eyebrow">SECURITY LAB / INTERACTIVE TRAINING</p><h2 id="scene-title">실습실 준비 중</h2><p id="scene-message" role="status">공간과 조사 장비를 불러오고 있습니다.</p>
+        <progress id="scene-progress" max="100" value="0" aria-label="3D 공간 로딩"></progress>
+        <div class="scene-actions"><button id="scene-start" class="primary" hidden>탐색 시작 →</button><button id="scene-retry" hidden>3D 다시 불러오기</button><button id="scene-fallback">2D 도구 화면</button></div>
+        <p class="scene-note">키보드와 마우스 필요 · 실제 서버를 공격하지 않는 로컬 실습<br>도구를 닫은 뒤 탐색 시작을 눌러 다시 이동하세요.</p>
+      </div></div>
+    </section>
     <a class="skip-link" href="#command">명령 입력으로 이동</a>
     <header class="topbar">
       <a class="brand" href="/" aria-label="Security Lab 홈"><span class="logo">S</span> SECURITY <strong>LAB</strong></a>
-      <span class="environment"><span class="dot"></span> LOCAL SIMULATION</span>
+      <span class="environment"><span class="dot"></span> LOCAL SIMULATION <button id="view-switch" type="button" class="view-switch">3D 실습실</button></span>
     </header>
-    <main>
+    <p id="view-notice" class="notice" role="status" hidden></p>
+    <main id="lab-tools">
+      <div id="tool-toolbar" class="tool-toolbar" hidden><p id="tool-source">조사 도구</p><button id="tool-close" type="button">닫기 · Esc</button></div>
       <section class="intro">
         <div><p class="eyebrow">학교 동아리 보안 조사 / CASE 001</p><h1>단서를 찾고,<br>안전하게 복구하세요.</h1><p class="intro-copy">동아리 자료 서버에서 이상 징후가 발견됐습니다.<br>조사부터 방어, 재검증까지 직접 경험하세요.</p></div>
         <div class="case-card"><span>YOUR ROLE</span><strong>승인된 조사 담당자</strong><p>가상 서버 1개 · 필수 미션 <span id="mission-count">3</span>개<br>실제 개인정보 없이 진행</p><span class="case-id">CLUB-SERVER / INTERNAL</span></div>

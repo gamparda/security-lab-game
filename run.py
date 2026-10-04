@@ -17,7 +17,7 @@ try:
     APP_VERSION = json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))['version']
 except (OSError, ValueError, KeyError):
     APP_VERSION = 'unknown'
-PUBLIC_FILES = {
+REQUIRED_FILES = {
     'index.html': 'text/html; charset=utf-8',
     'src/app.js': 'text/javascript; charset=utf-8',
     'src/bootstrap.js': 'text/javascript; charset=utf-8',
@@ -26,7 +26,25 @@ PUBLIC_FILES = {
     'src/storage.js': 'text/javascript; charset=utf-8',
     'src/loading.css': 'text/css; charset=utf-8',
     'src/style.css': 'text/css; charset=utf-8',
+    'src/labbridge.js': 'text/javascript; charset=utf-8',
+    'src/scene-entry.js': 'text/javascript; charset=utf-8',
 }
+OPTIONAL_FILES = {
+    'src/collision.js': 'text/javascript; charset=utf-8',
+    'src/player3d.js': 'text/javascript; charset=utf-8',
+    'src/interaction3d.js': 'text/javascript; charset=utf-8',
+    'src/scene3d.js': 'text/javascript; charset=utf-8',
+    'src/batch3d.js': 'text/javascript; charset=utf-8',
+    'src/scene3d.css': 'text/css; charset=utf-8',
+    'assets/models/security_lab.glb': 'model/gltf-binary',
+    'vendor/three/build/three.module.js': 'text/javascript; charset=utf-8',
+    'vendor/three/build/three.core.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/loaders/GLTFLoader.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/utils/BufferGeometryUtils.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/utils/SkeletonUtils.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/controls/PointerLockControls.js': 'text/javascript; charset=utf-8',
+}
+PUBLIC_FILES = {**REQUIRED_FILES, **OPTIONAL_FILES}
 try:
     _html = (ROOT / 'index.html').read_text(encoding='utf-8')
     _guard = re.search(r'<script id="startup-guard">(.*?)</script>', _html, re.S).group(1)
@@ -35,20 +53,40 @@ except (OSError, AttributeError):
 STARTUP_HASH = base64.b64encode(hashlib.sha256(_guard.encode()).digest()).decode()
 CSP = (
     "default-src 'self'; script-src 'self' 'sha256-" + STARTUP_HASH + "'; style-src 'self'; "
-    "connect-src 'none'; img-src 'self' data:; object-src 'none'; "
+    "connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
 
 
+class GameAssets(dict):
+    """Cached runtime files, retaining the loader's existing dictionary interface."""
+
+    def __init__(self):
+        super().__init__()
+        self.optional_asset_warnings = {}
+
+
 def load_game_assets():
-    assets = {}
+    assets = GameAssets()
+    root = ROOT.resolve()
     for name in PUBLIC_FILES:
         try:
-            content = (ROOT / name).read_bytes()
-        except OSError as error:
-            raise OSError(name + ': bundled file unreadable (' + str(error) + ')') from error
+            target = (root / name).resolve()
+            if not target.is_relative_to(root) or not target.is_file():
+                raise OSError('not a regular bundled file inside the game directory')
+            content = target.read_bytes()
+        except (OSError, RuntimeError) as error:
+            message = name + ': bundled file unreadable (' + str(error) + ')'
+            if name in REQUIRED_FILES:
+                raise OSError(message) from error
+            assets.optional_asset_warnings[name] = message
+            continue
         if not content:
-            raise OSError(name + ': bundled file is empty')
+            message = name + ': bundled file is empty'
+            if name in REQUIRED_FILES:
+                raise OSError(message)
+            assets.optional_asset_warnings[name] = message
+            continue
         assets[name] = content
     return assets
 
@@ -59,8 +97,16 @@ class GameServer(ThreadingHTTPServer):
     allow_reuse_address = sys.platform != 'win32'
 
     def __init__(self, server_address, handler, bind_and_activate=True, *, assets=None):
-        # Read every bundled file before opening the listener.
+        # Cache required files before opening the listener; 3D can fail separately.
         self.assets = load_game_assets() if assets is None else assets
+        for name in REQUIRED_FILES:
+            if not self.assets.get(name):
+                raise OSError(name + ': required cached file missing or empty')
+        self.required_assets_ready = True
+        self.optional_asset_warnings = dict(getattr(self.assets, 'optional_asset_warnings', {}))
+        for name in OPTIONAL_FILES:
+            if not self.assets.get(name):
+                self.optional_asset_warnings.setdefault(name, name + ': optional cached file missing or empty')
         super().__init__(server_address, handler, bind_and_activate)
 
     def server_bind(self):
@@ -87,13 +133,20 @@ class GameHandler(BaseHTTPRequestHandler):
             pass
 
     def do_GET(self):
-        relative = unquote(urlsplit(self.path).path).removeprefix('/')
+        try:
+            relative = unquote(urlsplit(self.path).path).removeprefix('/')
+        except ValueError:
+            self.respond(404, b'Not found')
+            return
         if not relative:
             relative = 'index.html'
         if relative not in PUBLIC_FILES:
             self.respond(404, b'Not found')
             return
-        content = self.server.assets[relative]
+        content = self.server.assets.get(relative)
+        if not content:
+            self.respond(404, b'Not found')
+            return
         self.respond(200, content, PUBLIC_FILES[relative])
 
     do_HEAD = do_GET
@@ -120,6 +173,8 @@ def main():
         parser.error('Port must be between 1 and 65535.')
     try:
         with GameServer(('127.0.0.1', args.port), GameHandler) as server:
+            for message in server.optional_asset_warnings.values():
+                print('Optional 3D asset warning: ' + message, file=sys.stderr, flush=True)
             print('Security Lab: http://localhost:%d' % args.port, flush=True)
             print('Open this URL in your browser. Stop: Ctrl+C', flush=True)
             server.serve_forever()

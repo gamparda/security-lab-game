@@ -1,35 +1,94 @@
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
-const publicFiles = new Set(['index.html', 'src/bootstrap.js', 'src/app.js', 'src/engine.js', 'src/missions.js', 'src/storage.js', 'src/loading.css', 'src/style.css']);
-const html = (await readFile(resolve(root, 'index.html'), 'utf8')).replaceAll('\r\n', '\n');
-const guard = html.match(/<script id="startup-guard">([\s\S]*?)<\/script>/)[1];
+const realRoot = await realpath(root);
+const types = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.glb': 'model/gltf-binary',
+};
+const requiredFiles = [
+  'index.html', 'src/bootstrap.js', 'src/app.js', 'src/engine.js',
+  'src/missions.js', 'src/storage.js', 'src/loading.css', 'src/style.css',
+  'src/labbridge.js', 'src/scene-entry.js',
+];
+const optionalFiles = [
+  'src/collision.js', 'src/player3d.js', 'src/interaction3d.js',
+  'src/scene3d.js', 'src/batch3d.js', 'src/scene3d.css',
+  'assets/models/security_lab.glb',
+  'vendor/three/build/three.module.js', 'vendor/three/build/three.core.js',
+  'vendor/three/examples/jsm/loaders/GLTFLoader.js',
+  'vendor/three/examples/jsm/utils/BufferGeometryUtils.js',
+  'vendor/three/examples/jsm/utils/SkeletonUtils.js',
+  'vendor/three/examples/jsm/controls/PointerLockControls.js',
+];
+const publicFiles = new Set([...requiredFiles, ...optionalFiles]);
+const assets = new Map();
+const optionalAssetWarnings = new Map();
+
+async function readAsset(name) {
+  const path = resolve(root, name);
+  if (!path.startsWith(root + sep)) throw new Error('Not inside game directory');
+  const actualPath = await realpath(path);
+  if (!actualPath.startsWith(realRoot + sep) || !(await stat(actualPath)).isFile()) {
+    throw new Error('Not a regular bundled file inside the game directory');
+  }
+  const body = await readFile(actualPath);
+  if (!body.length) throw new Error('Bundled file is empty');
+  return body;
+}
+
+// Validate the 2D entry before listening; optional 3D failures stay recoverable.
+for (const name of requiredFiles) {
+  try {
+    assets.set(name, await readAsset(name));
+  } catch (error) {
+    throw new Error(name + ': required bundled file unreadable (' + error.message + ')');
+  }
+}
+for (const name of optionalFiles) {
+  try {
+    assets.set(name, await readAsset(name));
+  } catch (error) {
+    optionalAssetWarnings.set(name, error.message);
+    console.warn('Optional 3D asset warning: ' + name + ': ' + error.message);
+  }
+}
+
+const html = assets.get('index.html').toString('utf8').replaceAll('\r\n', '\n');
+const guard = html.match(/<script id="startup-guard">([\s\S]*?)<\/script>/)?.[1];
+if (guard === undefined) throw new Error('index.html: startup guard missing');
 const startupHash = createHash('sha256').update(guard).digest('base64');
-const server = createServer(async (req, res) => {
-  const headers = {
-    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'sha256-" + startupHash + "'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-    'X-Content-Type-Options': 'nosniff',
-    'Cache-Control': 'no-store',
-  };
+const version = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).version;
+const headers = {
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'sha256-" + startupHash + "'; style-src 'self'; connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'Cache-Control': 'no-store',
+  'X-Security-Lab-Version': version,
+};
+const server = createServer((req, res) => {
+  function respond(status, body, type = 'text/plain; charset=utf-8') {
+    res.writeHead(status, { ...headers, 'Content-Type': type, 'Content-Length': Buffer.byteLength(body) });
+    res.end(req.method === 'HEAD' ? undefined : body);
+  }
   if (!['GET', 'HEAD'].includes(req.method)) {
-    res.writeHead(405, headers).end('Method not allowed');
+    respond(405, 'Method not allowed');
     return;
   }
   try {
-    const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-    const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
-    const path = resolve(root, relative);
-    if (!path.startsWith(root + sep) || !publicFiles.has(relative)) throw new Error('Not public');
-    const body = await readFile(path);
-    res.writeHead(200, { ...headers, 'Content-Type': types[extname(path)] ?? 'text/plain' });
-    res.end(req.method === 'HEAD' ? undefined : body);
+    // Preserve dot segments until the exact allowlist check; URL() normalizes them.
+    const pathname = decodeURIComponent(req.url.split(/[?#]/, 1)[0]);
+    const relative = pathname === '/' ? 'index.html' : pathname.startsWith('/') ? pathname.slice(1) : '';
+    const body = assets.get(relative);
+    if (!publicFiles.has(relative) || !body) throw new Error('Not public or unavailable');
+    respond(200, body, types[extname(relative)]);
   } catch {
-    res.writeHead(404, { ...headers, 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
+    respond(404, 'Not found');
   }
 });
 server.listen(Number(process.env.PORT || 5173), '127.0.0.1', () => console.log('Security Lab: http://localhost:' + server.address().port));
