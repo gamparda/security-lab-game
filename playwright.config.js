@@ -24,7 +24,11 @@ export default defineConfig({
   workers: process.env.CI ? (isWindows ? 1 : 2) : undefined,
   use: {
     baseURL: process.env.GAME_URL || 'http://localhost:5173',
-    headless: true, trace: 'retain-on-failure',
+    headless: true,
+    // Avoid continuous GPU readbacks while testing real input with Windows
+    // software graphics. Keep action/DOM traces and explicit screenshots.
+    trace: isWindows && process.env.CI
+      ? {mode:'retain-on-failure',screenshots:false} : 'retain-on-failure',
   },
   webServer: process.env.GAME_URL ? undefined : { command: process.env.GAME_SERVER || (isWindows ? 'python run.py' : 'python3 run.py'), url: 'http://localhost:5173', reuseExistingServer: !process.env.CI },
   projects: [

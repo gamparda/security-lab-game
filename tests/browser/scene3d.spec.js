@@ -99,9 +99,11 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
   expect((await diagnostics(page)).doors[0].pivot[0]).toBeCloseTo(-.64,2);
   await walkUntil(page,'KeyW',d=>d.position[2]<6.5);
   const walking=await diagnostics(page);
-  await page.keyboard.down('KeyW'); await page.waitForTimeout(400); await page.keyboard.up('KeyW');
+  // Walk back toward the open entrance before sprinting forward, leaving
+  // enough unobstructed corridor for delayed input delivery on CI.
+  await page.keyboard.down('KeyS'); await page.waitForTimeout(400); await page.keyboard.up('KeyS');
   const sprinting=await diagnostics(page);
-  const walkSpeed=(walking.position[2]-sprinting.position[2])/(sprinting.movementSeconds-walking.movementSeconds);
+  const walkSpeed=(sprinting.position[2]-walking.position[2])/(sprinting.movementSeconds-walking.movementSeconds);
   await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW'); await page.waitForTimeout(400);
   await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
   const afterSprint=await diagnostics(page);
@@ -485,6 +487,8 @@ test('3D tools preserve native dialogs and reject stale saves from another tab',
 
 test('validated import remains usable inside the 3D overlay',async({page},testInfo)=>{
   test.skip(!main3D(testInfo));
+  // Paused controls must remain clickable above the cover on a small screen.
+  await page.setViewportSize({width:640,height:480});
   await start(page); await page.keyboard.press('Escape'); await page.locator('#world-notes').click();
   await page.locator('#import-progress').click();
   await page.locator('#progress-file').setInputFiles({name:'SecurityLab-progress.json',mimeType:'application/json',buffer:Buffer.from(exportGame(await tutorialComplete()))});
