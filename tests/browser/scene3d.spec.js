@@ -92,7 +92,11 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
   const atClosedDoor=(await diagnostics(page)).position[2];
   expect(atClosedDoor).toBeGreaterThanOrEqual(10.2);
   await page.keyboard.down('KeyW'); await page.waitForTimeout(350); await page.keyboard.up('KeyW');
-  expect((await diagnostics(page)).position[2]).toBeCloseTo(atClosedDoor,2);
+  const blocked=(await diagnostics(page)).position[2];
+  // A later, smaller frame can close the final few centimetres of clearance.
+  // The player must still remain outside the closed leaf, without moving back.
+  expect(blocked).toBeGreaterThanOrEqual(10.2);
+  expect(blocked).toBeLessThanOrEqual(atClosedDoor+.005);
   await expect(page.locator('#interaction-prompt')).toContainText('문 열기');
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors[0].angle).toBeCloseTo(100*Math.PI/180,2);
