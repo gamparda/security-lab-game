@@ -8,6 +8,14 @@ npm run check
 
 시스템 Chromium: `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm run check`.
 
+Linux CI는 `SECURITYLAB_HEADED=1`과 Xvfb 가상 화면에서 브라우저를 실행한다. 3D 검사는 실제 마우스 잠금을 사용하므로 창 없는 headless shell에서 잠금이 거부되는 환경을 피한다. 가상 화면의 포커스가 다른 브라우저에 넘어가지 않도록 이 모드에서는 한 번에 하나의 worker만 실행한다. 로컬 기본 검사는 기존 headless 방식이다.
+
+```sh
+SECURITYLAB_HEADED=1 SECURITYLAB_CROSS_BROWSER=1 xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' npm run check
+```
+
+Linux 브라우저 검사 실패 시 `test-results`의 trace와 오류 내용을 GitHub Actions 아티팩트로 7일 보관한다. 테스트용 이동이나 마우스 잠금 우회는 사용하지 않는다.
+
 ## 게시 버전
 
 | 버전 | 엔진 | 서버·배포 | 브라우저 | Windows 실행창 |
