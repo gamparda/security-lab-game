@@ -11,7 +11,7 @@ test('두 탭의 오래된 진행은 전체 초기화 뒤에도 자동 저장을
   await page.getByRole('button', { name: '초기화', exact: true }).click();
   await expect(other.locator('#notice')).toContainText('다른 탭');
   await other.locator('#hint').click();
-  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).game.active, CURRENT_SAVE_KEY)).toBe(0);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).game.active, CURRENT_SAVE_KEY)).toBe('tutorial');
   await other.locator('#reload-progress').click();
   await expect(other.locator('#mission-title')).toHaveText('조사 준비');
 });
@@ -32,19 +32,58 @@ test('저장 실패 후 정상 저장은 실패 안내를 해제함', async ({ p
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).game.missions[0].hint, CURRENT_SAVE_KEY)).toBe(2);
 });
 
+test('해시 계산 중 다른 탭이 저장해도 늦은 계산이 최신 진행을 덮어쓰지 않음', async ({ page, context }) => {
+  await seedGame(page, await missionState(3));
+  const other = await context.newPage(); await other.goto('/');
+  await expect(other.locator('#game')).toBeVisible();
+  await page.evaluate(() => {
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    const gate = new Promise(resolve => { window.finishDigest = resolve; });
+    crypto.subtle.digest = async (...args) => { await gate; return digest(...args); };
+  });
+  const commandFinished = command(page, 'hash files');
+  await expect(page.locator('#command')).toBeDisabled();
+  await other.locator('#hint').click(); await expect(other.locator('#save-status')).not.toHaveText('저장 중…');
+  const saved = await other.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY);
+  await expect(page.locator('#notice')).toContainText('다른 탭');
+  await page.evaluate(() => window.finishDigest()); await commandFinished;
+  expect(await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY)).toBe(saved);
+});
+
 test('시작 스크립트가 차단돼도 오류 정보와 복사·재시도 수단이 표시됨', async ({ page }) => {
-  let requests = 0;
-  await page.route('**/src/bootstrap.js*', route => { requests++; return route.abort(); });
+  const requests = [];
+  await page.route('**/src/bootstrap.js*', route => { requests.push(new URL(route.request().url()).search); return route.abort(); });
   await page.goto('/');
   await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
   await expect(page.locator('#loading-retry')).toBeVisible();
   await page.locator('#loading-error summary').click();
   await expect(page.locator('#loading-detail')).toHaveValue(/src\/bootstrap.js/);
   await expect(page.locator('#copy-startup-error')).toBeVisible();
-  expect(requests).toBe(2);
+  // Firefox can issue a speculative request for the parser-created script.
+  expect([...new Set(requests)].sort()).toEqual(['', '?retry=1']);
+  expect(requests.filter(query => query === '?retry=1')).toHaveLength(1);
   await page.unroute('**/src/bootstrap.js*');
   await page.locator('#loading-retry').click();
   await expect(page.locator('#game')).toBeVisible();
+});
+
+test('취소된 시작 시도의 늦은 오류는 진행 중인 재시도를 실패시키지 않음', async ({ page }) => {
+  let release, requested;
+  const gate = new Promise(resolve => { release = resolve; });
+  const retryRequest = new Promise(resolve => { requested = resolve; });
+  await page.route('**/src/bootstrap.js*', async route => {
+    if (!new URL(route.request().url()).searchParams.has('retry')) { await route.abort(); return; }
+    requested(); await gate; await route.continue();
+  });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' }); await retryRequest;
+    await page.evaluate(() => {
+      const old = document.createElement('script'); old.id = 'bootstrap-entry'; old.dataset.attempt = '0';
+      document.head.append(old); old.dispatchEvent(new Event('error', { bubbles: true })); old.remove();
+    });
+    await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
+    release(); await expect(page.locator('#game')).toBeVisible();
+  } finally { release(); }
 });
 
 test('시작 스크립트 무응답은 두 번의 제한 시간 뒤 끝나고 늦은 파일은 실행하지 않음', async ({ page }) => {
@@ -107,6 +146,35 @@ test('손상·큰 진행 파일은 가져오지 않고 현재 저장을 유지�
     await expect(page.locator('#confirm-import')).toBeDisabled();
     expect(await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY)).toBe(before);
   }
+});
+
+test('다음 행동은 키보드로 조사하고 설명 위치로 이동할 수 있음', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#next-action')).toContainText('게임 명령 사용법');
+  await page.locator('#follow-action').focus(); await page.keyboard.press('Enter');
+  await expect(page.locator('#next-action')).toContainText('승인된 조사 범위');
+  await page.locator('#follow-action').focus(); await page.keyboard.press('Enter');
+  await expect(page.locator('#next-action')).toContainText('원인 설명');
+  await page.locator('#follow-action').click(); await expect(page.locator('#answer-0')).toBeFocused();
+  await page.keyboard.press('Space'); await page.locator('#follow-action').click();
+  await expect(page.locator('#next')).toBeVisible();
+});
+
+test('320px·640px 화면에서 가로 넘침이 없고 접근성 구조가 유지됨', async ({ page }) => {
+  await seedGame(page, await missionState(1));
+  for (const width of [320, 640]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.getByRole('tab', { name: '방어 설정' }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await expect(page.locator('#port-443')).toBeVisible();
+    await page.locator('#import-progress').click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await expect(page.locator('#progress-file')).toBeVisible();
+    await page.keyboard.press('Escape');
+  }
+  const snapshot = await page.locator('main').ariaSnapshot();
+  expect(snapshot).toContain('navigation "미션 진행"');
+  expect(snapshot).toContain('region "다음 행동"');
 });
 
 test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용됨', async ({ page }) => {

@@ -1,6 +1,9 @@
 export const MISSIONS = [
   {
     id: 'tutorial', title: '조사 준비', subtitle: '허용된 범위부터 확인하세요', duration: '약 5분', boundary: '모든 대상은 게임 내부 가상 데이터입니다.',
+    clues: { help: { label: '게임 명령 사용법', command: 'help' }, approval: { label: '승인된 조사 범위', command: 'inspect approval' } },
+    quickCommands: ['help', 'inspect approval', 'verify'],
+    defenseGuidance: '승인된 조사 범위를 선택하세요.', comparisonGuidance: '다음 미션부터 조사와 방어 이후 결과를 비교합니다.',
     objective: 'help와 inspect로 승인서를 읽고, 허용된 조사 범위를 선택하세요.',
     commands: ['help', 'inspect', 'verify'],
     hints: ['조사 전에 대상과 권한을 확인해야 합니다.', 'help 다음에 inspect approval을 입력하세요.', '승인서 확인 후 「club-server의 가상 데이터만 조사」를 선택하고 verify를 입력하세요.'],
@@ -11,6 +14,9 @@ export const MISSIONS = [
   },
   {
     id: 'services', title: '노출된 서비스', subtitle: '자료 서비스는 계속 운영되어야 합니다', duration: '8–12분', boundary: '포트 조회·방화벽·접속 테스트는 시뮬레이션입니다. 실제 요청은 없습니다.',
+    clues: { scan: { label: '서비스 포트 목록', command: 'scan club-server' }, 'port-443': { label: '자료 서비스 운영 조건', command: 'inspect club-server 443' }, 'port-8080': { label: '관리 서비스가 불필요함', command: 'inspect club-server 8080' }, rescan: { label: '방어 후 포트 재조회', command: 'scan club-server' } },
+    quickCommands: ['scan club-server', 'inspect club-server 443', 'inspect club-server 8080', 'verify'],
+    defenseGuidance: '방어 설정에서 필요한 자료 서비스는 유지하고 불필요한 접근을 제한하세요.', comparisonGuidance: 'scan club-server로 조사하고, 설정 변경 후 다시 scan과 재검증을 실행하세요.',
     objective: '서비스의 용도를 조사하고 불필요한 관리 포트만 차단하세요. 자료 서비스의 정상 동작도 재검증해야 합니다.',
     commands: ['help', 'inspect', 'scan', 'verify'],
     hints: ['열린 포트 자체가 취약점은 아닙니다. 운영 목적을 확인하세요.', 'scan club-server와 inspect club-server 8080으로 단서를 모으세요.', '443은 허용하고 8080만 차단한 뒤 scan club-server, verify를 차례로 실행하세요.'],
@@ -21,6 +27,9 @@ export const MISSIONS = [
   },
   {
     id: 'login', title: '약한 로그인 정책', subtitle: '정상 사용자는 들어올 수 있어야 합니다', duration: '8–12분', boundary: '더미 계정·후보 대입·로그인 결과는 시뮬레이션입니다. 실제 비밀번호는 입력하지 않습니다.',
+    clues: { login: { label: '더미 후보와 시도 기록', command: 'inspect login' } },
+    quickCommands: ['inspect login', 'verify'],
+    defenseGuidance: '방어 설정에서 길이·흔한 값·반복 시도 정책을 확인하세요.', comparisonGuidance: '정책 변경 후 inspect login 또는 재검증으로 정상 로그인과 반복 실패를 비교하세요.',
     objective: '더미 후보와 기록을 살펴보고 길이·흔한 값 차단·시도 제한을 적용하세요. 정상 로그인과 반복 실패를 함께 확인하세요.',
     commands: ['help', 'inspect', 'verify'],
     hints: ['특수문자가 있어도 짧고 흔한 값은 안전하다고 단정할 수 없습니다.', 'inspect login으로 후보와 시도 기록을 확인하세요.', '최소 길이 15, 흔한 값 차단, 3회 시도 제한을 적용하고 verify를 입력하세요.'],
@@ -31,6 +40,9 @@ export const MISSIONS = [
   },
   {
     id: 'integrity', title: '변조된 자료', subtitle: '신뢰할 수 있는 기준과 비교하세요', duration: '8–12분', boundary: '내장 파일 바이트의 SHA-256은 브라우저 Web Crypto로 실제 계산합니다.',
+    clues: { baseline: { label: '승인된 오프라인 기준', command: 'inspect baseline' }, hash: { label: 'SHA-256 비교 결과', command: 'hash files' }, mismatch: { label: 'budget.csv 변경 감지', command: 'hash files' } },
+    quickCommands: ['inspect baseline', 'hash files', 'verify'],
+    defenseGuidance: '방어 설정에서 변경된 파일을 승인된 원본으로 복구하세요.', comparisonGuidance: '복구 후 hash files를 다시 실행해야 변경 후 결과를 비교할 수 있습니다.',
     objective: '승인된 오프라인 원본 기준을 확인하고 세 파일의 해시를 비교하세요. 변경된 파일을 골라 복구하고 다시 검증하세요.',
     commands: ['help', 'inspect', 'hash', 'verify'],
     hints: ['해시 비교에는 신뢰할 수 있는 기준값이 필요합니다.', 'inspect baseline과 hash files로 세 파일을 비교하세요.', 'budget.csv를 선택해 원본으로 복구하고 hash files 다음 verify를 실행하세요.'],
@@ -40,6 +52,9 @@ export const MISSIONS = [
     explanation: '다른 SHA-256은 바이트 변경을 뜻하며 악성 여부를 판정하지 않습니다. 일치는 신뢰 가능한 기준과 같은 바이트임을 확인할 뿐 작성자를 인증하지 않습니다. 비밀번호 저장에는 단순 SHA-256 대신 Argon2id 등의 전용 방식이 필요합니다.',
   },
 ];
+
+export const LEGACY_MISSION_IDS = Object.freeze(['tutorial', 'services', 'login', 'integrity']);
+export const MISSION_INDEX = Object.freeze(Object.fromEntries(MISSIONS.map((mission, index) => [mission.id, index])));
 
 export const ORIGINAL_FILES = Object.freeze({
   'notice.txt': '동아리 모임: 금요일 16시, 컴퓨터실\n',
