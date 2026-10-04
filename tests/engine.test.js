@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initialState, progress, runCommand, answerFeedback, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission, score, sha256, accepted, loginSimulation } from '../src/engine.js';
 import { MISSIONS, ORIGINAL_FILES } from '../src/missions.js';
-import { loadGame, saveGame, SAVE_KEY } from '../src/storage.js';
+import { loadGame, saveGame, SAVE_KEY, createSaveSession, CURRENT_SAVE_KEY } from '../src/storage.js';
 
 async function tutorial(state) {
   await runCommand(state, 'help'); await runCommand(state, 'inspect approval'); applyAnswer(state, 0);
@@ -27,6 +27,68 @@ function memoryStorage() {
   const data = new Map();
   return { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) };
 }
+
+function serializedLocks() {
+  let queue = Promise.resolve();
+  return { request: (_name, action) => {
+    const result = queue.then(action);
+    queue = result.catch(() => {});
+    return result;
+  } };
+}
+
+test('오래된 탭은 진행과 전체 초기화 결과를 덮어쓰지 못함', async () => {
+  const storage = memoryStorage(), locks = serializedLocks();
+  const a = await createSaveSession(storage, locks), b = await createSaveSession(storage, locks);
+  const state = initialState(); await tutorial(state);
+  await a.save(state);
+  await assert.rejects(b.save(initialState()), { code: 'conflict' });
+  const c = await createSaveSession(storage, locks);
+  await c.save(initialState());
+  await assert.rejects(a.save(state), { code: 'conflict' });
+  assert.equal((await createSaveSession(storage, locks)).state.active, 0);
+});
+
+test('동시 저장은 잠금 안에서 개정을 비교해 하나만 성공함', async () => {
+  const storage = memoryStorage(), locks = serializedLocks();
+  const a = await createSaveSession(storage, locks), b = await createSaveSession(storage, locks);
+  const results = await Promise.allSettled([a.save(initialState()), b.save(initialState())]);
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(JSON.parse(storage.getItem(CURRENT_SAVE_KEY)).revision, 1);
+});
+
+test('v1 변환과 저장 실패에도 원본이 남고 잠금 미지원은 쓰기를 막음', async () => {
+  const storage = memoryStorage(), state = initialState(); await tutorial(state);
+  saveGame(state, storage); const original = storage.getItem(SAVE_KEY);
+  const session = await createSaveSession(storage, serializedLocks());
+  assert.equal(session.state.active, 1);
+  await session.save(session.state);
+  assert.equal(storage.getItem(SAVE_KEY), original);
+  const readOnly = await createSaveSession(storage, null);
+  await assert.rejects(readOnly.save(initialState()), { code: 'unavailable' });
+  const before = storage.getItem(CURRENT_SAVE_KEY);
+  storage.setItem = () => { throw new Error('quota'); };
+  await assert.rejects(session.save(initialState()), /quota/);
+  assert.equal(storage.getItem(CURRENT_SAVE_KEY), before);
+  assert.equal(storage.getItem(SAVE_KEY), original);
+});
+
+test('미지원 저장과 변환 백업 실패는 원본을 자동으로 바꾸지 않음', async () => {
+  for (const raw of ['{broken', '{"version":99}']) {
+    const storage = memoryStorage(); storage.setItem(SAVE_KEY, raw);
+    const session = await createSaveSession(storage, serializedLocks());
+    await assert.rejects(session.save(initialState()), { code: 'preserved' });
+    assert.equal(storage.getItem(SAVE_KEY), raw);
+    assert.equal(storage.getItem(CURRENT_SAVE_KEY), null);
+  }
+  const storage = memoryStorage(); saveGame(initialState(), storage);
+  const original = storage.getItem(SAVE_KEY);
+  const session = await createSaveSession(storage, serializedLocks());
+  storage.setItem = () => { throw new Error('backup full'); };
+  await assert.rejects(session.save(initialState()), /backup full/);
+  assert.equal(storage.getItem(SAVE_KEY), original);
+  assert.equal(storage.getItem(CURRENT_SAVE_KEY), null);
+});
 
 test('튜토리얼: 단서와 범위 없이는 완료 불가', async () => {
   const state = initialState();
@@ -192,7 +254,7 @@ test('해시 연산 실패 중에도 잘못된 앞 미션 완료는 그대로 �
   t.mock.method(crypto.subtle, 'digest', async () => { throw new Error('Temporary digest failure'); });
   const loaded = await loadGame(storage);
   assert.equal(loaded.recovered, true); assert.equal(loaded.state.active, 0);
-  assert.equal(storage.getItem(SAVE_KEY), null);
+  assert.notEqual(storage.getItem(SAVE_KEY), null);
 });
 
 test('설명·포트·로그인·파일 변경은 이전 통과 결과와 완료 상태를 무효화함', async () => {

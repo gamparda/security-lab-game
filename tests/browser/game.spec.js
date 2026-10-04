@@ -1,7 +1,36 @@
 import { test, expect } from '@playwright/test';
 import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin, restoreFile, nextMission } from '../../src/engine.js';
-import { saveGame, SAVE_KEY } from '../../src/storage.js';
+import { saveGame, SAVE_KEY, CURRENT_SAVE_KEY } from '../../src/storage.js';
 import { ORIGINAL_FILES } from '../../src/missions.js';
+
+test('두 탭의 오래된 진행은 전체 초기화 뒤에도 자동 저장을 덮어쓰지 않음', async ({ page, context }) => {
+  await seedGame(page, await missionState(1));
+  const other = await context.newPage(); await other.goto('/');
+  await expect(other.locator('#mission-title')).toHaveText('노출된 서비스');
+  await page.locator('#reset-all').click();
+  await page.getByRole('button', { name: '초기화', exact: true }).click();
+  await expect(other.locator('#notice')).toContainText('다른 탭');
+  await other.locator('#hint').click();
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).game.active, CURRENT_SAVE_KEY)).toBe(0);
+  await other.locator('#reload-progress').click();
+  await expect(other.locator('#mission-title')).toHaveText('조사 준비');
+});
+
+test('저장 실패 후 정상 저장은 실패 안내를 해제함', async ({ page }) => {
+  await page.goto('/'); await expect(page.locator('#game')).toBeVisible();
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      Storage.prototype.setItem = original;
+      throw new DOMException('Full', 'QuotaExceededError');
+    };
+  });
+  await page.locator('#hint').click();
+  await expect(page.locator('#notice')).toContainText('저장에 실패');
+  await page.locator('#hint').click();
+  await expect(page.locator('#notice')).toBeEmpty();
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).game.missions[0].hint, CURRENT_SAVE_KEY)).toBe(2);
+});
 
 test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용됨', async ({ page }) => {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -229,7 +258,7 @@ async function seedGame(page, state) {
   let saved;
   saveGame(state, { setItem: (_key, value) => { saved = value; } });
   await page.goto('/');
-  await page.evaluate(({ key, value }) => localStorage.setItem(key, value), { key: SAVE_KEY, value: saved });
+  await page.evaluate(({ key, value, current }) => { localStorage.removeItem(current); localStorage.setItem(key, value); }, { current: CURRENT_SAVE_KEY, key: SAVE_KEY, value: saved });
   await page.reload();
   await expect(page.locator('#mission-title')).toHaveText(['조사 준비', '노출된 서비스', '약한 로그인 정책', '변조된 자료'][state.active]);
   return saved;
