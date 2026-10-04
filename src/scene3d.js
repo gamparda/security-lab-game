@@ -2,7 +2,7 @@ import * as THREE from '../vendor/three/build/three.module.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { Player } from './player3d.js';
 import { Interaction } from './interaction3d.js';
-import { observeMission, requestTool } from './labbridge.js';
+import { observeMission, requestTool } from '/src/labbridge.js';
 import { batchStatic } from './batch3d.js';
 
 const $ = id => document.getElementById(id);

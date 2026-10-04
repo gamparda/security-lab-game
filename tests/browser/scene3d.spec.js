@@ -4,7 +4,7 @@ import { CURRENT_SAVE_KEY, SAVE_KEY, encodeGame, exportGame } from '../../src/st
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene3d.js')).get3DDiagnostics());
+const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene-entry.js')).get3DDiagnostics());
 const VIEW_KEY='security-lab-view';
 const desktop3D=testInfo=>['desktop','windows-edge'].includes(testInfo.project.name);
 const main3D=testInfo=>testInfo.project.name==='desktop';
@@ -63,7 +63,7 @@ async function walkUntil(page,key,condition,timeout=16000) {
   // keyup handler in the frame that reaches the waypoint, so slow automation
   // transport cannot carry the player past a doorway or interaction target.
   await page.evaluate(async({key,condition,timeout})=>{
-    const {get3DDiagnostics}=await import('/src/scene3d.js');
+    const {get3DDiagnostics}=await import('/src/scene-entry.js');
     const state=window.__labWalk={done:false,error:null};
     let startSeconds=0,timer;
     const finish=error=>{
@@ -333,6 +333,42 @@ test('first launch opens 2D without requesting optional 3D assets',async({page})
   await expect(page.locator('#view-switch')).toHaveText('3D 실습실');
   expect(optional).toEqual([]);
 });
+
+for(const blocked of ['src/scene3d.js','vendor/three/build/three.core.js','src/scene3d.css']) {
+  test(`3D retry recovers ${blocked} without reloading the working game`,async({page},testInfo)=>{
+    test.skip(!main3D(testInfo));
+    test.setTimeout(60000);
+    const raw=await seedV2(page,await tutorialComplete());
+    await page.goto('/?view=2d'); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+    await page.locator('#hint').click(); const saved=await savedGame(page);
+    expect(saved).not.toBe(raw);
+    await page.evaluate(()=>{window.originalGameDocument=true;});
+    let appRequests=0;
+    await page.route('**/src/app.js*',route=>{appRequests++; return route.abort();});
+    await page.route('**/'+blocked,route=>route.abort());
+    await page.locator('#view-switch').click();
+    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error',{timeout:25000});
+    await expect(page.locator('#loading-screen')).toBeHidden();
+    // The original failed module stays in the browser's module map. A fresh
+    // 3D graph must recover while app.js remains unavailable for a new page.
+    await page.unroute('**/'+blocked);
+    const fresh=[];
+    page.on('request',request=>{if(new URL(request.url()).pathname.startsWith('/__scene__/'))fresh.push(request.url());});
+    await page.locator('#scene-retry').click();
+    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+    expect(fresh.some(url=>url.includes('src/scene3d.js'))).toBe(true);
+    expect(appRequests).toBe(0); expect(await page.evaluate(()=>window.originalGameDocument)).toBe(true);
+    expect(await savedGame(page)).toBe(saved);
+    await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
+    await page.locator('#world-notes').click();
+    await page.locator('#hint').click();
+    await expect(page.locator('#hint')).toHaveText('힌트 보기 (2/3)');
+    expect(JSON.parse(await savedGame(page)).game.missions[1].hint).toBe(2);
+    await page.locator('#tool-close').click(); await page.locator('#world-2d').click();
+    await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+    expect(await page.evaluate(()=>window.originalGameDocument)).toBe(true);
+  });
+}
 
 test('view preference persists independently and explicit 2D wins over saved 3D',async({page},testInfo)=>{
   test.skip(!main3D(testInfo));

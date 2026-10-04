@@ -143,6 +143,12 @@ class GameHandler(BaseHTTPRequestHandler):
             return
         if not relative:
             relative = 'index.html'
+        if relative.startswith('__scene__/'):
+            retry = re.fullmatch(r'__scene__/[a-z0-9]{1,16}-[0-9]{1,6}/(.+)', relative)
+            if not retry or retry.group(1) not in OPTIONAL_FILES:
+                self.respond(404, b'Not found')
+                return
+            relative = retry.group(1)
         if relative not in PUBLIC_FILES:
             self.respond(404, b'Not found')
             return
