@@ -204,7 +204,9 @@ class ServerTest(unittest.TestCase):
 
     def test_empty_and_unreadable_optional_assets_are_captured(self):
         with TemporaryDirectory() as directory:
-            root = Path(directory)
+            # Windows runners can return an 8.3 temp path; the asset loader
+            # resolves it before reading, so the fault fixture must match it.
+            root = Path(directory).resolve()
             copy_assets(root, self.server.assets)
             empty = 'assets/models/security_lab.glb'
             unreadable = 'src/scene3d.js'
