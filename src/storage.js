@@ -2,6 +2,8 @@ import { initialState, runCommand } from './engine.js';
 import { MISSIONS, ORIGINAL_FILES } from './missions.js';
 
 export const SAVE_KEY = 'security-lab-game:v1';
+export const CURRENT_SAVE_KEY = 'security-lab-game:v2';
+export const BACKUP_KEY = 'security-lab-game:backup';
 const CLUES = [['help', 'approval'], ['scan', 'port-443', 'port-8080', 'rescan'], ['login'], ['baseline', 'hash', 'mismatch']];
 function loadObservations(raw, index, state) {
   const changed = index === 1 ? !state.ports[443] || !state.ports[8080]
@@ -17,18 +19,23 @@ function loadObservations(raw, index, state) {
   const modified = changed || raw?.changed === true;
   return { changed: modified, before: snapshot(raw?.before), after: modified ? snapshot(raw?.after) : null };
 }
-export function saveGame(state, storage) {
-  const data = {
+export function encodeGame(state) {
+  return {
     version: 1, active: state.active, ports: state.ports, login: state.login,
     restored: state.files['budget.csv'] === ORIGINAL_FILES['budget.csv'],
     hashComputed: state.missions[3].hashes.length === 3 || state.missions[3].hashPending,
     missions: state.missions.map(({ clues, answer, hint, verified, selectedFile, observations }) => ({ clues, answer, hint, verified, selectedFile, observations })),
   };
-  storage.setItem(SAVE_KEY, JSON.stringify(data));
+}
+export function saveGame(state, storage) {
+  storage.setItem(SAVE_KEY, JSON.stringify(encodeGame(state)));
 }
 export async function loadGame(storage) {
   const raw = storage.getItem(SAVE_KEY);
   if (!raw) return { state: initialState(), recovered: false };
+  return decodeGame(raw);
+}
+export async function decodeGame(raw) {
   try {
     const data = JSON.parse(raw);
     if (data.version !== 1 || !Number.isInteger(data.active) || data.active < 0 || data.active > 3 || !Array.isArray(data.missions) || data.missions.length !== 4) throw new Error('Invalid save');
@@ -69,7 +76,58 @@ export async function loadGame(storage) {
     state.active = active;
     return { state, recovered: false, hashRetryNeeded };
   } catch {
-    storage.removeItem(SAVE_KEY);
     return { state: initialState(), recovered: true };
   }
+}
+
+function saveError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+// The browser app writes only v2. saveGame/loadGame retain the v1 codec for migration.
+export async function createSaveSession(storage, locks = globalThis.navigator?.locks) {
+  let expected = storage.getItem(CURRENT_SAVE_KEY);
+  const legacy = storage.getItem(SAVE_KEY);
+  let revision = 0, loaded;
+  try {
+    if (expected !== null) {
+      const envelope = JSON.parse(expected);
+      if (envelope.version !== 2 || !Number.isSafeInteger(envelope.revision) || envelope.revision < 1) throw new Error('Unknown save');
+      revision = envelope.revision;
+      loaded = await decodeGame(JSON.stringify(envelope.game));
+    } else loaded = legacy === null ? { state: initialState(), recovered: false } : await decodeGame(legacy);
+  } catch { loaded = { state: initialState(), recovered: true }; }
+  let blocked = loaded.recovered ? 'preserved' : !locks?.request ? 'unavailable' : null;
+  let queue = Promise.resolve();
+  const session = {
+    ...loaded,
+    get blocked() { return blocked; },
+    changed() {
+      if (storage.getItem(CURRENT_SAVE_KEY) !== expected || expected === null && storage.getItem(SAVE_KEY) !== legacy) blocked = 'conflict';
+      return blocked === 'conflict';
+    },
+    save(state, { backup = false } = {}) {
+      const game = structuredClone(encodeGame(state));
+      const result = queue.then(async () => {
+        if (blocked) throw saveError(blocked, 'Automatic save blocked');
+        return locks.request(CURRENT_SAVE_KEY, () => {
+          if (session.changed()) throw saveError('conflict', 'Save changed in another tab');
+          if (revision >= Number.MAX_SAFE_INTEGER) throw saveError('preserved', 'Save revision limit');
+          // No writes to the original v1 key. Back up before migrating or importing.
+          if (backup || expected === null && legacy !== null) storage.setItem(BACKUP_KEY, expected ?? legacy);
+          const raw = JSON.stringify({ version: 2, revision: revision + 1, game });
+          storage.setItem(CURRENT_SAVE_KEY, raw);
+          expected = raw;
+          revision++;
+        });
+      });
+      queue = result.catch(() => {});
+      return result;
+    },
+  };
+  return session;
+}
+
+export function exportGame(state) {
+  return JSON.stringify({ format: 'security-lab-progress', version: 1, game: encodeGame(state) }, null, 2);
 }

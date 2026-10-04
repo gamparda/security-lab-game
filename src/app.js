@@ -1,6 +1,6 @@
 import { MISSIONS, ORIGINAL_FILES } from './missions.js';
 import { initialState, progress, stage, score, runCommand, answerFeedback, accepted, loginSimulation, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
-import { loadGame, saveGame } from './storage.js';
+import { createSaveSession, CURRENT_SAVE_KEY, SAVE_KEY, exportGame } from './storage.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, text, className) => {
@@ -13,27 +13,52 @@ let state = initialState();
 let busy = false;
 let resetKind = null;
 let storage = null;
+let session = null;
 let hashRetryNeeded = false;
+let saveNotice = '';
+let pendingSaves = 0;
 const hashRetryNotice = '진행은 복원했지만 해시 계산을 완료하지 못했습니다. hash files를 다시 실행한 뒤 현재 상태를 재검증하세요.';
-try { storage = window.localStorage; } catch { /* 저장 불가 환경에서도 플레이 가능 */ }
-if (storage) {
-  try {
-    const loaded = await loadGame(storage);
-    state = loaded.state;
-    hashRetryNeeded = loaded.hashRetryNeeded === true;
-    if (loaded.recovered) $('notice').textContent = '저장 데이터가 손상되었거나 버전이 달라 진행을 초기화했습니다.';
-    else if (hashRetryNeeded) $('notice').textContent = hashRetryNotice;
-  } catch { storage = null; }
+const blockedNotices = {
+  preserved: '저장 데이터가 손상되었거나 지원하지 않는 형식입니다. 원본을 보존했습니다. 자동 저장을 중단합니다.',
+  unavailable: '이 브라우저에서는 안전한 자동 저장을 사용할 수 없습니다. 진행 내보내기로 보관하세요.',
+  conflict: '다른 탭에서 진행이 변경됐습니다. 최신 진행 불러오기를 눌러주세요. 현재 탭은 저장하지 않습니다.',
+};
+function renderNotice() {
+  $('notice').textContent = [saveNotice, hashRetryNeeded ? hashRetryNotice : ''].filter(Boolean).join('\n');
+  $('reload-progress').hidden = session?.blocked !== 'conflict';
+  $('save-status').textContent = pendingSaves ? '저장 중…' : saveNotice ? '자동 저장 확인 필요' : '이 브라우저에 자동 저장';
 }
-if (!storage) $('notice').textContent = '이 브라우저에서는 저장을 사용할 수 없습니다. 현재 화면에서 계속 플레이할 수 있습니다.';
+try {
+  storage = window.localStorage;
+  session = await createSaveSession(storage);
+  state = session.state;
+  hashRetryNeeded = session.hashRetryNeeded === true;
+  saveNotice = blockedNotices[session.blocked] ?? '';
+} catch { storage = null; saveNotice = blockedNotices.unavailable; }
 function clearHashRetryNotice() {
   hashRetryNeeded = false;
-  if ($('notice').textContent === hashRetryNotice) $('notice').textContent = '';
+  renderNotice();
 }
-function persist() {
-  if (!storage) return;
-  try { saveGame(state, storage); } catch { $('notice').textContent = '저장에 실패했습니다. 현재 플레이는 유지되지만 새로고침하면 진행을 잃을 수 있습니다.'; }
+async function persist() {
+  if (!session) return;
+  pendingSaves++; renderNotice();
+  try { await session.save(state); saveNotice = ''; }
+  catch (error) {
+    saveNotice = blockedNotices[error.code] ?? '저장에 실패했습니다. 현재 플레이는 유지됩니다. 진행 내보내기로 보관하세요.';
+  }
+  pendingSaves--; renderNotice();
 }
+window.addEventListener('storage', event => {
+  if (!session || ![CURRENT_SAVE_KEY, SAVE_KEY].includes(event.key) && event.key !== null) return;
+  if (session.changed()) { saveNotice = blockedNotices.conflict; renderNotice(); }
+});
+$('reload-progress').addEventListener('click', () => location.reload());
+$('export-progress').addEventListener('click', () => {
+  const address = URL.createObjectURL(new Blob([exportGame(state)], { type: 'application/json' }));
+  const link = el('a'); link.href = address; link.download = 'SecurityLab-progress.json'; link.click();
+  setTimeout(() => URL.revokeObjectURL(address), 1000);
+});
+renderNotice();
 function log(text, type = 'output') {
   const row = el('pre', text, type);
   $('terminal').append(row);
@@ -220,7 +245,7 @@ async function execute(input) {
   try {
     log(await runCommand(state, input));
     if (hashRetryNeeded && progress(state).hashes.length) clearHashRetryNotice();
-    persist();
+    await persist();
   }
   catch (error) { log('처리 안내: ' + error.message); }
   finally { busy = false; $('command').disabled = false; $('command-form').querySelector('button').disabled = false; render(); $('command').focus(); }
