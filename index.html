@@ -8,7 +8,6 @@
     <title>Security Lab · 보안 체험 게임</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="src/loading.css">
-    <link rel="stylesheet" href="src/scene3d.css">
     <script id="startup-guard">
 (() => {
   let attempt = 0, claimed = false, finished = false, timer;
@@ -98,10 +97,11 @@
     <a class="skip-link" href="#command">명령 입력으로 이동</a>
     <header class="topbar">
       <a class="brand" href="/" aria-label="Security Lab 홈"><span class="logo">S</span> SECURITY <strong>LAB</strong></a>
-      <span class="environment"><span class="dot"></span> LOCAL SIMULATION <button id="view-switch" class="view-switch">3D 실습실</button></span>
+      <span class="environment"><span class="dot"></span> LOCAL SIMULATION <button id="view-switch" type="button" class="view-switch">3D 실습실</button></span>
     </header>
+    <p id="view-notice" class="notice" role="status" hidden></p>
     <main id="lab-tools">
-      <div id="tool-toolbar" class="tool-toolbar" hidden><p id="tool-source">조사 도구</p><button id="tool-close">닫기 · Esc</button></div>
+      <div id="tool-toolbar" class="tool-toolbar" hidden><p id="tool-source">조사 도구</p><button id="tool-close" type="button">닫기 · Esc</button></div>
       <section class="intro">
         <div><p class="eyebrow">학교 동아리 보안 조사 / CASE 001</p><h1>단서를 찾고,<br>안전하게 복구하세요.</h1><p class="intro-copy">동아리 자료 서버에서 이상 징후가 발견됐습니다.<br>조사부터 방어, 재검증까지 직접 경험하세요.</p></div>
         <div class="case-card"><span>YOUR ROLE</span><strong>승인된 조사 담당자</strong><p>가상 서버 1개 · 필수 미션 <span id="mission-count">3</span>개<br>실제 개인정보 없이 진행</p><span class="case-id">CLUB-SERVER / INTERNAL</span></div>

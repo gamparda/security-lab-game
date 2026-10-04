@@ -1,9 +1,29 @@
 import { test, expect } from '@playwright/test';
-import { CURRENT_SAVE_KEY } from '../../src/storage.js';
+import { initialState, runCommand, applyAnswer, nextMission } from '../../src/engine.js';
+import { CURRENT_SAVE_KEY, SAVE_KEY, encodeGame, exportGame } from '../../src/storage.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene3d.js')).get3DDiagnostics());
+const VIEW_KEY='security-lab-view';
+const desktop3D=testInfo=>['desktop','windows-edge'].includes(testInfo.project.name);
+const main3D=testInfo=>testInfo.project.name==='desktop';
+async function savedGame(page) {
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  return page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);
+}
+async function tutorialComplete() {
+  const state=initialState();
+  await runCommand(state,'help'); await runCommand(state,'inspect approval');
+  applyAnswer(state,0); await runCommand(state,'verify'); nextMission(state);
+  await runCommand(state,'scan club-server');
+  return state;
+}
+async function seedV2(page,state) {
+  const raw=JSON.stringify({version:2,revision:7,game:encodeGame(state)});
+  await page.addInitScript(({key,raw})=>{if(localStorage.getItem(key)===null) localStorage.setItem(key,raw);},{key:CURRENT_SAVE_KEY,raw});
+  return raw;
+}
 async function capture(page,file) {
   if(!process.env.LAB_SCREENSHOT_DIR) return;
   await mkdir(process.env.LAB_SCREENSHOT_DIR,{recursive:true});
@@ -14,6 +34,11 @@ async function start(page) {
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
   await page.locator('#scene-start').click();
   await expect.poll(async()=> (await diagnostics(page)).pointerLocked).toBe(true);
+}
+async function openMainDoor(page) {
+  await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_Main');
+  await page.keyboard.press('KeyE');
+  await expect.poll(async()=> (await diagnostics(page)).doors[0].angle).toBeCloseTo(100*Math.PI/180,2);
 }
 async function walkUntil(page,key,predicate,timeout=16000) {
   await page.keyboard.down(key);
@@ -37,17 +62,20 @@ async function closeAndResume(page) {
 }
 
 test('3D actual movement, closed-door collision, hinge rotation, mouse and pause',async({page},testInfo)=>{
-  test.skip(testInfo.project.name!=='desktop','3D navigation is validated on desktop Chromium; other projects cover the 2D tools.');
+  test.skip(!main3D(testInfo),'Detailed physical navigation uses the primary desktop Chromium project.');
   const errors=[],violations=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.cspErrors=(window.cspErrors||[]).concat(e.violatedDirective)));
   await start(page);
   const initial=await diagnostics(page);
   expect(initial.position[1]).toBe(1.65); expect(initial.colliders).toBeGreaterThan(25);
-  // Collision can leave up to one 0.08 m substep of clearance at slower frame rates.
-  await walkUntil(page,'KeyW',d=>d.position[2]<10.4);
+  // A 0.1 s frame can stop at 10.27 m: assert the collision boundary and
+  // continued inability to cross, not one particular movement quantization.
+  await walkUntil(page,'KeyW',d=>d.position[2]<10.32);
+  const atClosedDoor=(await diagnostics(page)).position[2];
+  expect(atClosedDoor).toBeGreaterThanOrEqual(10.2);
   await page.keyboard.down('KeyW'); await page.waitForTimeout(350); await page.keyboard.up('KeyW');
-  expect((await diagnostics(page)).position[2]).toBeGreaterThan(10.2);
+  expect((await diagnostics(page)).position[2]).toBeCloseTo(atClosedDoor,2);
   await expect(page.locator('#interaction-prompt')).toContainText('문 열기');
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors[0].angle).toBeCloseTo(100*Math.PI/180,2);
@@ -80,9 +108,9 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
 });
 
 test('walk to all five devices; old tools, scoring, save and mission guards stay intact',async({page},testInfo)=>{
-  test.skip(testInfo.project.name!=='desktop','Detailed spatial route uses desktop Chromium input.');
+  test.skip(!main3D(testInfo),'Detailed spatial route uses the primary desktop Chromium project.');
   test.setTimeout(120000);
-  await start(page); await page.keyboard.press('KeyE'); await page.waitForTimeout(550);
+  await start(page); await openMainDoor(page);
   await capture(page,'02-door-open.png');
   await walkUntil(page,'KeyW',d=>d.position[2]<6);
   await aim(page,-3,1.5,0); await capture(page,'01-lab-overview.png');
@@ -116,8 +144,7 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await capture(page,'04-terminal-overlay.png');
   await page.locator('#command').fill('scan club-server'); await page.locator('#command').press('Enter');
   await expect(page.locator('#terminal')).toContainText('8080');
-  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
-  const save=await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);
+  const save=await savedGame(page);
   expect(JSON.parse(save).game.active).toBe('services');
   await closeAndResume(page);
   // Leave the server suite through the same physical doorway, then the whiteboard.
@@ -152,12 +179,12 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await page.keyboard.press('Escape'); await page.locator('#world-2d').click();
   await expect(page.locator('#lab-tools')).toBeVisible();
   await page.reload(); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
-  expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(save);
+  expect(await savedGame(page)).toBe(save);
 });
 
 test('door closing stops for a player in its sweep, then closes when clear',async({page},testInfo)=>{
-  test.skip(testInfo.project.name!=='desktop');
-  await start(page); await page.keyboard.press('KeyE'); await page.waitForTimeout(550);
+  test.skip(!main3D(testInfo));
+  await start(page); await openMainDoor(page);
   await walkUntil(page,'KeyW',d=>d.position[2]<9.88);
   await aim(page,-.72,1.4,9.4);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_Main');
@@ -171,7 +198,7 @@ test('door closing stops for a player in its sweep, then closes when clear',asyn
 });
 
 test('all original missions finish inside the 3D overlay and restore after reload',async({page},testInfo)=>{
-  test.skip(testInfo.project.name!=='desktop');
+  test.skip(!main3D(testInfo));
   const command=async text=>{
     await page.getByRole('tab',{name:'가상 터미널'}).click();
     await page.locator('#command').fill(text); await page.locator('#command').press('Enter');
@@ -191,14 +218,15 @@ test('all original missions finish inside the 3D overlay and restore after reloa
   await page.getByRole('tab',{name:'방어 설정'}).click(); await page.locator('[data-restore="budget.csv"]').click();
   await command('hash files'); await command('verify');
   await expect(page.locator('#results')).toBeVisible(); await expect(page.locator('#score')).toHaveText('100 / 100');
-  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
-  await page.reload(); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready');
+  const save=await savedGame(page);
+  expect(JSON.parse(save).game.missions.every(m=>m.verified)).toBe(true);
+  await page.reload(); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
   await page.locator('#world-notes').click(); await expect(page.locator('#results')).toBeVisible();
   await expect(page.locator('.mission-step.complete')).toHaveCount(4);
 });
 
 test('model failure offers retry and 2D continuation; no external requests',async({page},testInfo)=>{
-  test.skip(testInfo.project.name!=='desktop');
+  test.skip(!main3D(testInfo));
   const external=[];
   page.on('request',r=>{if(/^https?:/.test(r.url()) && new URL(r.url()).origin!==new URL(testInfo.project.use.baseURL||process.env.GAME_URL||'http://localhost:5173').origin) external.push(r.url());});
   await page.route('**/assets/models/security_lab.glb',route=>route.abort());
@@ -212,15 +240,8 @@ test('model failure offers retry and 2D continuation; no external requests',asyn
   expect(external).toEqual([]);
 });
 
-test('unresponsive model has a bounded loading timeout and mobile defaults to tools',async({page},testInfo)=>{
-  if(testInfo.project.name==='mobile') {
-    await page.goto('/'); await expect(page.locator('#lab-tools')).toBeVisible();
-    await expect(page.locator('#lab-world')).toBeHidden(); return;
-  }
-  if(testInfo.project.name!=='desktop') {
-    await page.goto('/?view=2d'); await expect(page.locator('#lab-tools')).toBeVisible();
-    await expect(page.locator('#lab-world')).toBeHidden(); return;
-  }
+test('unresponsive model has a bounded loading timeout',async({page},testInfo)=>{
+  test.skip(!main3D(testInfo));
   await page.clock.install();
   await page.route('**/assets/models/security_lab.glb',()=>new Promise(()=>{}));
   await page.goto('/?view=3d');
@@ -230,30 +251,256 @@ test('unresponsive model has a bounded loading timeout and mobile defaults to to
   await page.locator('#scene-fallback').click(); await expect(page.locator('#mission-title')).toBeVisible();
 });
 
-test('3D tools preserve native dialogs and reject stale saves from another tab',async({page,context},testInfo)=>{
-  test.skip(testInfo.project.name!=='desktop');
-  await start(page); await page.keyboard.press('Escape'); await page.locator('#world-notes').click();
-  await page.locator('#hint').click();
-  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
-  const saved=await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);
-  await page.locator('#import-progress').click();
-  await expect(page.locator('#import-dialog')).toBeVisible();
-  await page.locator('#import-dialog button[value="cancel"]').focus();
-  await page.keyboard.press('Shift+Tab'); await expect(page.locator('#progress-file')).toBeFocused();
-  await page.keyboard.press('Escape'); await expect(page.locator('#import-dialog')).toBeHidden();
+test('first launch opens 2D without requesting optional 3D assets',async({page})=>{
+  const optional=[];
+  page.on('request',r=>{
+    const path=new URL(r.url()).pathname;
+    if(/^\/vendor\/three\//.test(path) || /\/(scene3d\.(?:js|css)|player3d\.js|interaction3d\.js|batch3d\.js|collision\.js)$/.test(path) || path.endsWith('.glb')) optional.push(path);
+  });
+  await page.goto('/');
+  await expect(page.locator('#mission-title')).toHaveText('조사 준비');
   await expect(page.locator('#lab-tools')).toBeVisible();
-  await page.locator('#reset-all').click(); await page.keyboard.press('Escape');
-  await expect(page.locator('#reset-dialog')).toBeHidden(); await expect(page.locator('#lab-tools')).toBeVisible();
-  expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(saved);
+  await expect(page.locator('#lab-world')).toBeHidden();
+  await expect(page.locator('#view-switch')).toHaveText('3D 실습실');
+  expect(optional).toEqual([]);
+});
+
+test('view preference persists independently and explicit 2D wins over saved 3D',async({page},testInfo)=>{
+  test.skip(!main3D(testInfo));
+  await page.goto('/'); await page.locator('#view-switch').click();
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  expect(await page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('3d');
+  expect(await savedGame(page)).toBeNull();
+  await page.goto('/'); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await page.goto('/?view=2d'); await expect(page.locator('#lab-tools')).toBeVisible();
+  expect(await page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('2d');
+  await page.goto('/'); await expect(page.locator('#lab-world')).toBeHidden();
+  await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+});
+
+for(const [name,pattern] of [
+  ['entry module','**/src/scene3d.js*'],
+  ['stylesheet','**/src/scene3d.css*'],
+  ['dependency graph','**/vendor/three/build/three.core.js*'],
+]) {
+  test(`optional ${name} failure leaves the existing 2D game playable`,async({page})=>{
+    const raw=await seedV2(page,await tutorialComplete());
+    await page.route(pattern,route=>route.abort());
+    await page.goto('/?view=3d',{waitUntil:'domcontentloaded'});
+    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error',{timeout:25000});
+    await expect(page.locator('#scene-start')).toBeHidden();
+    await expect(page.locator('#scene-retry')).toBeVisible();
+    await page.locator('#scene-fallback').click();
+    await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+    await expect(page.locator('#lab-world')).toBeHidden();
+    expect(await savedGame(page)).toBe(raw);
+    await page.locator('#command').fill('inspect club-server 8080'); await page.locator('#command').press('Enter');
+    await expect(page.locator('#terminal')).toContainText('관리용 서비스');
+    expect(JSON.parse(await savedGame(page)).game.missions[1].clues).toContain('port-8080');
+  });
+
+  test(`unresponsive optional ${name} ends within the total preparation deadline`,async({page})=>{
+    let release,requested;
+    const gate=new Promise(resolve=>{release=resolve;});
+    const request=new Promise(resolve=>{requested=resolve;});
+    await page.clock.install();
+    await page.route(pattern,async route=>{requested(); await gate; await route.continue();});
+    try {
+      await page.goto('/?view=3d',{waitUntil:'domcontentloaded'}); await request;
+      await expect(page.locator('#lab-world')).toHaveAttribute('data-state','loading');
+      await expect(page.locator('#scene-start')).toBeHidden();
+      await page.clock.fastForward(21000);
+      await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
+      await page.locator('#scene-fallback').click();
+      release();
+      await expect(page.locator('#lab-tools')).toBeVisible();
+      await expect(page.locator('#lab-world')).toBeHidden();
+      await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+    } finally {release();}
+  });
+}
+
+test('cancelled preparation cannot reopen 3D when a late optional module arrives',async({page})=>{
+  let release,requested;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const request=new Promise(resolve=>{requested=resolve;});
+  await page.route('**/src/scene3d.js*',async route=>{requested(); await gate; await route.continue();});
+  try {
+    await page.goto('/?view=3d',{waitUntil:'domcontentloaded'}); await request;
+    await page.locator('#scene-fallback').click(); release();
+    await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+    await expect(page.locator('#lab-world')).toBeHidden();
+    await page.locator('#command').fill('help'); await page.locator('#command').press('Enter');
+    await expect(page.locator('#terminal')).toContainText('inspect approval');
+    await expect(page.locator('#lab-world')).toBeHidden();
+    expect(await page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('2d');
+  } finally {release();}
+});
+
+test('v0.3 v2 progress and legacy original survive toggles, location return and retry',async({page},testInfo)=>{
+  test.skip(!main3D(testInfo));
+  const state=await tutorialComplete(),raw=await seedV2(page,state);
+  const legacy=JSON.stringify(encodeGame(state,{legacy:true}));
+  await page.addInitScript(({key,legacy})=>localStorage.setItem(key,legacy),{key:SAVE_KEY,legacy});
+  await page.goto('/?view=3d');
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
+  await page.locator('#world-reset').click();
+  await page.locator('#world-2d').click();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+  await expect(page.locator('#clues li')).toHaveCount(1);
+  expect(await savedGame(page)).toBe(raw);
+  await page.reload();
+  await page.route('**/assets/models/security_lab.glb',route=>route.abort());
+  await page.locator('#view-switch').click();
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
+  expect(await savedGame(page)).toBe(raw);
+  await page.unroute('**/assets/models/security_lab.glb'); await page.locator('#scene-retry').click();
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  expect(await savedGame(page)).toBe(raw);
+  expect(await page.evaluate(key=>localStorage.getItem(key),SAVE_KEY)).toBe(legacy);
+  await page.locator('#world-notes').click();
+  await expect(page.locator('#next-action')).toContainText('관리 서비스가 불필요');
+});
+
+test('unsupported WebGL offers 2D continuation without altering progress',async({page})=>{
+  const raw=await seedV2(page,await tutorialComplete());
+  await page.addInitScript(()=>{
+    const getContext=HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext=function(kind,...args) {
+      return /^webgl/.test(kind)?null:getContext.call(this,kind,...args);
+    };
+  });
+  await page.goto('/?view=3d');
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error',{timeout:25000});
+  await expect(page.locator('#scene-start')).toBeHidden(); await page.locator('#scene-fallback').click();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+  expect(await savedGame(page)).toBe(raw);
+});
+
+test('Pointer Lock rejection stays paused and offers retry or 2D',async({page},testInfo)=>{
+  test.skip(!main3D(testInfo));
+  await page.addInitScript(()=>{
+    Element.prototype.requestPointerLock=function() {
+      document.dispatchEvent(new Event('pointerlockerror'));
+      return Promise.reject(new DOMException('Pointer lock denied','NotAllowedError'));
+    };
+  });
+  await page.goto('/?view=3d');
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await page.locator('#scene-start').click(); await expect(page.locator('#scene-message')).toContainText('2D');
+  expect((await diagnostics(page)).pointerLocked).toBe(false);
+  await expect(page.locator('#scene-cover')).toBeVisible();
+  await page.locator('#scene-fallback').click(); await expect(page.locator('#mission-title')).toHaveText('조사 준비');
+});
+
+test('lost WebGL context never becomes ready on retry before a restored first frame',async({page},testInfo)=>{
+  test.skip(!main3D(testInfo));
+  const raw=await seedV2(page,await tutorialComplete());
+  await start(page);
+  const available=await page.evaluate(()=>{
+    const gl=document.getElementById('lab-canvas').getContext('webgl2');
+    window.contextRecovery=gl.getExtension('WEBGL_lose_context');
+    return Boolean(window.contextRecovery);
+  });
+  test.skip(!available,'The active browser does not expose WEBGL_lose_context.');
+  await page.evaluate(()=>window.contextRecovery.loseContext());
+  await expect.poll(async()=> (await diagnostics(page)).contextLost).toBe(true);
+  const lost=await diagnostics(page);
+  expect(lost.ready).toBe(false); expect(lost.firstFrameReady).toBe(false); expect(lost.pointerLocked).toBe(false);
+  await expect(page.locator('#scene-start')).toBeHidden();
+  await page.locator('#scene-retry').click();
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','loading');
+  await page.waitForTimeout(350);
+  expect((await diagnostics(page)).ready).toBe(false);
+  expect(await page.locator('#lab-canvas').evaluate(canvas=>canvas.getContext('webgl2').isContextLost())).toBe(true);
+  expect(await savedGame(page)).toBe(raw);
+  await page.evaluate(()=>window.contextRecovery.restoreContext());
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  const restored=await diagnostics(page);
+  expect(restored.contextLost).toBe(false); expect(restored.firstFrameReady).toBe(true);
+  expect(restored.renderedFrames).toBeGreaterThan(lost.renderedFrames);
+  expect(restored.drawCalls).toBeGreaterThan(0);
+  await page.locator('#scene-start').click(); await expect.poll(async()=> (await diagnostics(page)).pointerLocked).toBe(true);
+  await page.keyboard.press('Escape'); await page.locator('#world-2d').click();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+  expect(await savedGame(page)).toBe(raw);
+});
+
+test('3D tools preserve native dialogs and reject stale saves from another tab',async({page,context},testInfo)=>{
+  test.skip(!main3D(testInfo));
+  await start(page); await page.keyboard.press('Escape'); await page.locator('#world-notes').click();
+  await page.locator('#hint').click(); const saved=await savedGame(page);
+  for(const [opener,dialog] of [['#import-progress','#import-dialog'],['#reset-all','#reset-dialog']]) {
+    await page.locator(opener).click(); await expect(page.locator(dialog)).toBeVisible();
+    const controls=page.locator(`${dialog} button:enabled, ${dialog} input:enabled`);
+    await controls.first().focus(); await page.keyboard.press('Shift+Tab');
+    await expect.poll(()=>page.locator(dialog).evaluate(el=>el.contains(document.activeElement))).toBe(true);
+    await controls.last().focus(); await page.keyboard.press('Tab');
+    await expect.poll(()=>page.locator(dialog).evaluate(el=>el.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Escape'); await expect(page.locator(dialog)).toBeHidden();
+    await expect(page.locator('#lab-tools')).toBeVisible(); await expect(page.locator(opener)).toBeFocused();
+    expect((await diagnostics(page)).toolsOpen).toBe(true);
+    expect((await diagnostics(page)).pointerLocked).toBe(false);
+    expect(await savedGame(page)).toBe(saved);
+  }
+  await page.keyboard.press('Escape'); await expect(page.locator('#lab-tools')).toBeHidden();
+  await expect(page.locator('#scene-start')).toBeFocused();
+  await expect(page.locator('#view-switch')).toBeEnabled();
+  await page.locator('#world-notes').click();
   const other=await context.newPage(); await other.goto('/?view=2d');
   await expect(other.locator('#hint')).toHaveText('힌트 보기 (1/3)');
-  await other.locator('#hint').click(); await expect(other.locator('#save-status')).not.toHaveText('저장 중…');
-  const latest=await other.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);
-  await expect(page.locator('#notice')).toContainText('다른 탭');
-  await page.locator('#hint').click();
-  expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(latest);
+  await other.locator('#hint').click(); const latest=await savedGame(other);
+  await expect(page.locator('#notice')).toContainText('다른 탭'); await page.locator('#hint').click();
+  expect(await savedGame(page)).toBe(latest);
   await page.locator('#reload-progress').click();
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
   await page.locator('#world-notes').click(); await expect(page.locator('#hint')).toHaveText('힌트 보기 (2/3)');
-  expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(latest);
+  expect(await savedGame(page)).toBe(latest);
+});
+
+test('validated import remains usable inside the 3D overlay',async({page},testInfo)=>{
+  test.skip(!main3D(testInfo));
+  await start(page); await page.keyboard.press('Escape'); await page.locator('#world-notes').click();
+  await page.locator('#import-progress').click();
+  await page.locator('#progress-file').setInputFiles({name:'SecurityLab-progress.json',mimeType:'application/json',buffer:Buffer.from(exportGame(await tutorialComplete()))});
+  await expect(page.locator('#confirm-import')).toBeEnabled(); await page.locator('#confirm-import').click();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+  await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
+  await expect(page.locator('#lab-tools')).toBeVisible();
+  expect(JSON.parse(await savedGame(page)).game.active).toBe('services');
+});
+
+test('@windows-edge packaged 3D model displays an actual first frame',async({page},testInfo)=>{
+  test.skip(!desktop3D(testInfo));
+  await page.goto('/?view=3d');
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  const d=await diagnostics(page);
+  expect(d.firstFrameReady).toBe(true); expect(d.renderedFrames).toBeGreaterThan(0);
+  expect(d.drawCalls).toBeGreaterThan(0); expect(d.colliders).toBeGreaterThan(25);
+  await expect(page.locator('#scene-start')).toBeVisible();
+});
+
+test('@windows-edge door opening and WASD move through the physical doorway',async({page},testInfo)=>{
+  test.skip(!desktop3D(testInfo));
+  await start(page); await openMainDoor(page);
+  const initial=(await diagnostics(page)).position;
+  await walkUntil(page,'KeyW',d=>d.position[2]<9.7);
+  const through=(await diagnostics(page)).position;
+  expect(initial[2]-through[2]).toBeGreaterThan(1);
+  await page.keyboard.press('Escape'); await expect(page.locator('#scene-cover')).toBeVisible();
+});
+
+test('@windows-edge lost graphics context stops navigation and continues in 2D',async({page},testInfo)=>{
+  test.skip(!desktop3D(testInfo));
+  const raw=await seedV2(page,await tutorialComplete()); await start(page);
+  const available=await page.evaluate(()=>{
+    const extension=document.getElementById('lab-canvas').getContext('webgl2').getExtension('WEBGL_lose_context');
+    if(extension) extension.loseContext(); return Boolean(extension);
+  });
+  test.skip(!available,'The active browser does not expose WEBGL_lose_context.');
+  await expect.poll(async()=> (await diagnostics(page)).contextLost).toBe(true);
+  expect((await diagnostics(page)).ready).toBe(false); expect((await diagnostics(page)).pointerLocked).toBe(false);
+  await page.locator('#scene-fallback').click(); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+  await expect(page.locator('#lab-world')).toBeHidden(); expect(await savedGame(page)).toBe(raw);
 });

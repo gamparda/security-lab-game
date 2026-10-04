@@ -11,7 +11,7 @@ import threading
 import traceback
 import webbrowser
 from instance import SingleInstance, state_directory, preferred_port, write_json
-from run import APP_VERSION, GameHandler, GameServer, PUBLIC_FILES, ROOT, load_game_assets, main as serve
+from run import APP_VERSION, GameHandler, GameServer, PUBLIC_FILES, REQUIRED_FILES, OPTIONAL_FILES, ROOT, load_game_assets, main as serve
 
 
 def start_server(preferred=5173):
@@ -47,7 +47,10 @@ def main():
     def report(data):
         if args.diagnostics:
             assets = {name: name in server.assets if server else (ROOT / name).is_file() for name in PUBLIC_FILES}
-            data = {'version': APP_VERSION, 'bundled': bool(getattr(sys, 'frozen', False)), 'assets': assets, **data}
+            data = {'version': APP_VERSION, 'bundled': bool(getattr(sys, 'frozen', False)), 'assets': assets,
+                    'requiredAssetsReady': all(assets[name] for name in REQUIRED_FILES),
+                    'sceneAssetsReady': all(assets[name] for name in OPTIONAL_FILES),
+                    'sceneWarnings': server.optional_asset_warnings if server else {}, **data}
             args.diagnostics.write_text(json.dumps(data), encoding='utf-8')
 
     import tkinter as tk

@@ -1,6 +1,6 @@
 {
   "name": "security-lab-game",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "고등학생을 위한 브라우저 보안 체험 시뮬레이터",

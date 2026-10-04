@@ -21,15 +21,33 @@ test('headers above the body and the floor do not block a grounded player',()=>{
 const bytes=readFileSync(new URL('../assets/models/security_lab.glb',import.meta.url));
 const length=bytes.readUInt32LE(12);
 const gltf=JSON.parse(bytes.subarray(20,20+length).toString());
+test('closed main door blocks frame-quantized walking at 60 FPS and dt 0.1',()=>{
+  const door=gltf.nodes.find(n=>n.name==='DOOR_Main');
+  const bounds=door.extras.collisionBounds,[x,y,z]=door.translation;
+  const box={min:{x:x+bounds[0],y:y+bounds[2],z:z-bounds[4]},max:{x:x+bounds[3],y:y+bounds[5],z:z-bounds[1]}};
+  const spawn=gltf.nodes.find(n=>n.name==='SPAWN_Player').translation;
+  for(const dt of [1/60,.1]) {
+    let position={x:spawn[0],z:spawn[2]};
+    for(let frame=0;frame<120;frame++) position=moveWithCollisions(position,0,-2.6*dt,[box]);
+    assert.ok(position.z<spawn[2]-1,'walking must advance before the closed door');
+    assert.ok(position.z>=10.2 && position.z<10.32,`dt=${dt}: collision stops at ${position.z}`);
+    assert.equal(overlaps(position,box),false);
+    assert.deepEqual(moveWithCollisions(position,0,-2.6*dt,[box]),position,'held movement remains stopped');
+    // The same movement crosses the doorway when the door is no longer blocking it.
+    let open=position;
+    for(let frame=0;frame<60;frame++) open=moveWithCollisions(open,0,-2.6*dt,[]);
+    assert.ok(open.z<9.8,'opening the door must permit crossing the former boundary');
+  }
+});
 test('real packed GLB has metre-scale rooms, named tools, hinged doors, spawn and colliders',()=>{
   assert.equal(bytes.readUInt32LE(0),0x46546c67); assert.equal(bytes.readUInt32LE(4),2);
   assert.equal(bytes.readUInt32LE(8),bytes.length);
   assert.equal(gltf.scenes.length,1); assert.ok(!gltf.nodes.some(n=>n.name==='Cube'));
-  for(const name of ['ENV_Floor','ENV_Ceiling','INTERACT_ServerRack','INTERACT_AdminPC','INTERACT_Router','INTERACT_FileCabinet','INTERACT_Whiteboard','DOOR_Main','DOOR_ServerRoom','SPAWN_Player']) assert.ok(gltf.nodes.some(n=>n.name===name),name);
+  for(const name of ['ENV_Floor','ENV_Ceiling','INTERACT_ServerRack','INTERACT_AdminPC','INTERACT_Router','INTERACT_FileCabinet','INTERACT_Whiteboard','DOOR_Main','DOOR_ServerRoom','DOOR_RecordsRoom','SPAWN_Player']) assert.ok(gltf.nodes.some(n=>n.name===name),name);
   assert.ok(gltf.nodes.filter(n=>n.name?.startsWith('COLLIDER_')).length>=25);
-  for(const name of ['DOOR_Main','DOOR_ServerRoom']) {
+  for(const name of ['DOOR_Main','DOOR_ServerRoom','DOOR_RecordsRoom']) {
     const door=gltf.nodes.find(n=>n.name===name);
-    assert.ok(door.translation[0]<0); assert.equal(door.translation[1],0);
+    assert.ok(Number.isFinite(door.translation[0])); assert.equal(door.translation[1],0);
     assert.equal(door.extras.width,1.28); assert.equal(door.extras.height,2.3);
     assert.ok(door.extras.openAngleDegrees>=90); assert.ok(door.children.length>0);
   }

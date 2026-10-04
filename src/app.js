@@ -1,7 +1,8 @@
 import { MISSIONS, ORIGINAL_FILES } from './missions.js';
 import { initialState, missionId, nextAction, progress, stage, score, runCommand, answerFeedback, accepted, loginSimulation, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
-import { publishMission, onToolRequest } from './labbridge.js';
 import { createSaveSession, CURRENT_SAVE_KEY, SAVE_KEY, BACKUP_KEY, exportGame, importGame, MAX_IMPORT_BYTES } from './storage.js';
+import { publishMission, onToolRequest } from './labbridge.js';
+import { initSceneView } from './scene-entry.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, text, className) => {
@@ -176,7 +177,8 @@ function render() {
   $('reset-mission').disabled = busy;
   $('reset-all').disabled = busy;
   renderSettings(); renderFiles(); renderComparison(); renderResults();
-  publishMission({ id: m.id, active: state.active, title: m.title, objective: m.objective, stage: stage(state), score: score(state), clues: p.clues.length, busy });
+  publishMission({ id: missionId(state), missionId: missionId(state), active: state.active, title: m.title,
+    objective: m.objective, nextAction: action.text, stage: stage(state), score: score(state), clues: p.clues.length, busy });
   const commands = m.quickCommands;
   $('quick-commands').replaceChildren(...commands.map(command => {
     const button = el('button', command); button.id = 'quick-' + m.id + '-' + command.replaceAll(' ', '-'); button.disabled = busy;
@@ -358,3 +360,4 @@ $('reset-dialog').addEventListener('close', () => {
 });
 render();
 log('SECURITY LAB / 가상 조사 환경에 오신 것을 환영합니다.\n' + MISSIONS[state.active].objective + '\nhelp로 게임 명령을 확인하세요.');
+initSceneView();

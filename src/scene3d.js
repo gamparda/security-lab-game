@@ -6,235 +6,457 @@ import { observeMission, requestTool } from './labbridge.js';
 import { batchStatic } from './batch3d.js';
 
 const $ = id => document.getElementById(id);
-const VIEW_KEY = 'security-lab-view';
-let renderer, scene, camera, model, player, interaction, ready=false, mode='2d', toolsOpen=false;
-let generation=0, controller, previousTime=0, frames=0, frameMs=0, fps=0, noticeTimer;
-let mission=null, currentTab='terminal';
-const materials = new Set(), geometries = new Set(), textures = new Set();
+const PREPARATION_TIMEOUT = 20000;
+let renderer, graphicsContext, scene, camera, model, player, interaction;
+let ready = false, firstFrameReady = false, contextLost = false, mode = '2d', toolsOpen = false;
+let initialized = false, generation = 0, preparation, previousTime = 0, renderedFrames = 0;
+let frames = 0, frameMs = 0, fps = 0, noticeTimer, mission = null, currentTab = 'terminal', toolOpener;
 
-function savedView() { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } }
-function saveView(value) { try { localStorage.setItem(VIEW_KEY,value); } catch { /* Optional view preference only. */ } }
-function message(title,text) { $('scene-title').textContent=title; $('scene-message').textContent=text; }
+function message(title, text) {
+  $('scene-title').textContent = title;
+  $('scene-message').textContent = text;
+}
+function aborted() { return new DOMException('3D preparation cancelled', 'AbortError'); }
+function healthyContext() { return Boolean(graphicsContext && !contextLost && !graphicsContext.isContextLost()); }
+function checkAttempt(token, signal) {
+  if (signal.aborted || token !== generation || mode !== '3d') throw signal.reason instanceof Error ? signal.reason : aborted();
+}
 function clearResources(root) {
   if (!root) return;
-  root.traverse(object=>{
-    if(object.geometry) geometries.add(object.geometry);
-    for(const mat of (Array.isArray(object.material)?object.material:[object.material])) if(mat) materials.add(mat);
+  const materials = new Set(), geometries = new Set(), textures = new Set();
+  root.traverse(object => {
+    if (object.geometry) geometries.add(object.geometry);
+    for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material) materials.add(material);
   });
-  for(const mat of materials) {
-    for(const value of Object.values(mat)) if(value?.isTexture) textures.add(value);
-    mat.dispose();
+  for (const material of materials) {
+    for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
+    material.dispose();
   }
-  for(const tex of textures) { tex.source?.data?.close?.(); tex.dispose(); }
-  for(const geometry of geometries) geometry.dispose();
-  textures.clear(); materials.clear(); geometries.clear();
+  for (const texture of textures) { texture.source?.data?.close?.(); texture.dispose(); }
+  for (const geometry of geometries) geometry.dispose();
 }
-function setMode(value) {
-  mode=value; saveView(value);
-  const address=new URL(location.href); address.searchParams.set('view',value); history.replaceState(null,'',address);
-  document.body.classList.toggle('lab-3d',value==='3d');
-  $('lab-world').hidden=value!=='3d'; $('tool-toolbar').hidden=true;
-  $('lab-tools').hidden=value==='3d'; toolsOpen=false;
-  $('lab-tools').removeAttribute('role'); $('lab-tools').removeAttribute('aria-modal');
-  $('lab-tools').inert=false;
-  $('view-switch').textContent=value==='3d'?'2D 도구 화면':'3D 실습실';
-  if(value!=='3d') { player?.controls.unlock(); player?.clear(); controller?.abort(); generation++; }
-  else { $('scene-cover').hidden=false; pauseMessage(); if(!ready) void loadModel(); }
+function stopInput() {
+  player?.controls.unlock();
+  player?.clear();
+  $('crosshair').hidden = true;
+  $('interaction-prompt').hidden = true;
+  previousTime = 0;
+}
+function resetToolModal() {
+  toolsOpen = false;
+  $('tool-toolbar').hidden = true;
+  for (const attribute of ['role', 'aria-modal', 'aria-label', 'aria-busy']) $('lab-tools').removeAttribute(attribute);
+  $('lab-tools').inert = false;
+  $('lab-world').inert = false;
+  $('view-switch').disabled = false;
+  $('tool-close').disabled = false;
+  toolOpener = null;
+}
+function showError(error) {
+  ready = false;
+  firstFrameReady = false;
+  stopInput();
+  resetToolModal();
+  $('lab-tools').hidden = mode === '3d';
+  $('lab-world').dataset.state = 'error';
+  $('lab-world').setAttribute('aria-busy', 'false');
+  $('scene-cover').hidden = false;
+  message('실습실을 열지 못했습니다.', `${error?.message || error} 다시 시도하거나 2D 도구 화면에서 계속할 수 있습니다.`);
+  $('scene-progress').hidden = true;
+  $('scene-retry').hidden = false;
+  $('scene-start').hidden = true;
+}
+// The lightweight entry owns the graph/CSS deadline and can cancel late work.
+export function cancelPreparation(error = new Error('준비 시간이 초과되었습니다.')) {
+  generation++;
+  preparation?.controller.abort(error);
+  preparation = undefined;
+  if (mode === '3d') showError(error);
+  else { ready = false; firstFrameReady = false; stopInput(); resetToolModal(); }
+}
+export function setMode(value) {
+  if (value !== '2d' && value !== '3d') throw new Error('지원하지 않는 보기입니다.');
+  mode = value;
+  stopInput();
+  resetToolModal();
+  document.body.classList.toggle('lab-3d', value === '3d');
+  $('lab-world').hidden = value !== '3d';
+  $('lab-tools').hidden = value === '3d';
+  $('view-switch').textContent = value === '3d' ? '2D 도구 화면' : '3D 실습실';
+  if (value === '2d') {
+    generation++;
+    preparation?.controller.abort(aborted());
+    preparation = undefined;
+    $('lab-world').setAttribute('aria-busy', 'false');
+    clearTimeout(noticeTimer);
+    return Promise.resolve();
+  }
+  $('scene-cover').hidden = false;
+  if (ready && healthyContext()) {
+    resize();
+    pauseMessage();
+    return Promise.resolve();
+  }
+  if (preparation) return preparation.promise;
+  return loadModel();
 }
 function pauseMessage() {
-  if(!ready) return;
-  message('실습실을 탐색하세요.','장비 가까이에서 E를 누르면 조사 도구가 열립니다. 단서를 모으고, 방어한 뒤, 정상 기능을 재검증하세요.');
-  $('scene-progress').hidden=true; $('scene-start').hidden=false; $('scene-retry').hidden=true;
+  if (!ready || !healthyContext()) return;
+  message('실습실을 탐색하세요.', '장비 가까이에서 E를 누르면 조사 도구가 열립니다. 단서를 모으고, 방어한 뒤, 정상 기능을 재검증하세요.');
+  $('scene-progress').hidden = true;
+  $('scene-start').hidden = false;
+  $('scene-retry').hidden = true;
 }
 function resize() {
-  if(!renderer) return;
-  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight,false);
-  renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
+  if (!renderer || !camera) return;
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  // A conservative default is usable on integrated GPUs and software rendering.
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1));
+  renderer.setSize(innerWidth, innerHeight, false);
 }
-async function readModel(signal) {
+async function waitForContext(token, signal) {
+  checkAttempt(token, signal);
+  if (healthyContext()) return;
+  await new Promise((resolve, reject) => {
+    const canvas = $('lab-canvas');
+    const cleanup = () => {
+      canvas.removeEventListener('webglcontextrestored', restored);
+      signal.removeEventListener('abort', cancelled);
+    };
+    const cancelled = () => { cleanup(); reject(signal.reason instanceof Error ? signal.reason : aborted()); };
+    const restored = () => {
+      // Three.js rebuilds its context state in the same event dispatch.
+      queueMicrotask(() => {
+        if (!healthyContext()) return;
+        cleanup(); resolve();
+      });
+    };
+    canvas.addEventListener('webglcontextrestored', restored);
+    signal.addEventListener('abort', cancelled, { once: true });
+    if (signal.aborted) cancelled();
+    else if (healthyContext()) { cleanup(); resolve(); }
+  });
+  checkAttempt(token, signal);
+}
+async function ensureRenderer(token, signal) {
+  if (renderer) { await waitForContext(token, signal); return; }
+  const options = { antialias: false, alpha: false, powerPreference: 'high-performance' };
+  graphicsContext = $('lab-canvas').getContext('webgl2', options);
+  if (!graphicsContext) throw new Error('이 브라우저에서 3D 그래픽을 사용할 수 없습니다.');
+  contextLost = graphicsContext.isContextLost();
+  await waitForContext(token, signal);
+  renderer = new THREE.WebGLRenderer({ canvas: $('lab-canvas'), context: graphicsContext, ...options });
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  renderer.shadowMap.enabled = false;
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color('#20333e');
+  camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, .05, 70);
+  scene.add(new THREE.HemisphereLight(0xd3e8f5, 0x65737b, 2.0));
+  scene.add(new THREE.AmbientLight(0xd8e3ed, 1.1));
+  const light = new THREE.DirectionalLight(0xffeed8, 2.5);
+  light.position.set(-6, 3.1, 5);
+  light.target.position.set(0, 0, 0);
+  scene.add(light, light.target);
+  resize();
+}
+async function readModel(signal, token) {
   // This fixed local URL never contains game commands or user-provided addresses.
-  const response=await fetch('assets/models/security_lab.glb',{signal});
-  if(!response.ok) throw new Error('모델 파일을 읽을 수 없습니다.');
-  const total=Number(response.headers.get('Content-Length'))||0;
-  if(total>32*1024*1024) throw new Error('모델 파일 크기가 제한을 초과했습니다.');
-  const reader=response.body.getReader(), chunks=[];
-  let received=0;
-  while(true) {
-    const {done,value}=await reader.read(); if(done) break;
-    received+=value.byteLength;
-    if(received>32*1024*1024) { await reader.cancel(); throw new Error('모델 파일 크기가 제한을 초과했습니다.'); }
-    chunks.push(value); $('scene-progress').value=total?Math.min(80,received/total*80):25;
-    $('scene-message').textContent=`실습실을 불러오는 중 · ${(received/1024/1024).toFixed(1)} MB`;
+  const response = await fetch('assets/models/security_lab.glb', { signal });
+  if (!response.ok) throw new Error('모델 파일을 읽을 수 없습니다.');
+  const total = Number(response.headers.get('Content-Length')) || 0;
+  if (total > 32 * 1024 * 1024) throw new Error('모델 파일 크기가 제한을 초과했습니다.');
+  const reader = response.body.getReader(), chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    checkAttempt(token, signal);
+    if (done) break;
+    received += value.byteLength;
+    if (received > 32 * 1024 * 1024) { await reader.cancel(); throw new Error('모델 파일 크기가 제한을 초과했습니다.'); }
+    chunks.push(value);
+    $('scene-progress').value = total ? Math.min(80, received / total * 80) : 25;
+    $('scene-message').textContent = `실습실을 불러오는 중 · ${(received / 1024 / 1024).toFixed(1)} MB`;
   }
-  const buffer=new Uint8Array(received); let offset=0;
-  for(const chunk of chunks) {buffer.set(chunk,offset);offset+=chunk.byteLength;}
+  const buffer = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
   return buffer.buffer;
 }
-async function loadModel() {
-  controller?.abort(); const token=++generation;
-  controller=new AbortController(); const transaction=controller, signal=transaction.signal;
-  player?.controls.unlock(); player?.clear();
-  ready=false; $('lab-world').dataset.state='loading'; $('scene-cover').hidden=false;
-  message('실습실 준비 중','공간과 조사 장비를 불러오고 있습니다.');
-  $('scene-progress').hidden=false; $('scene-progress').value=0;
-  $('scene-start').hidden=true; $('scene-retry').hidden=true;
-  let timer;
-  try {
-    if(!renderer) {
-      renderer=new THREE.WebGLRenderer({canvas:$('lab-canvas'),antialias:true,alpha:false,powerPreference:'high-performance'});
-      renderer.outputColorSpace=THREE.SRGBColorSpace;
-      renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.2;
-      renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;
-      scene=new THREE.Scene(); scene.background=new THREE.Color('#20333e');
-      camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.05,70);
-      scene.add(new THREE.HemisphereLight(0xd3e8f5,0x65737b,2.0));
-      scene.add(new THREE.AmbientLight(0xd8e3ed,1.1));
-      const light=new THREE.DirectionalLight(0xffeed8,2.5);
-      light.position.set(-6,3.1,5); light.target.position.set(0,0,0);
-      light.castShadow=true; light.shadow.mapSize.set(1024,1024);
-      Object.assign(light.shadow.camera,{left:-15,right:15,top:15,bottom:-15,near:.1,far:40});
-      light.shadow.bias=-.002; light.shadow.normalBias=.045; scene.add(light,light.target);
-      resize(); window.addEventListener('resize',resize);
-      $('lab-canvas').addEventListener('webglcontextlost',event=>{
-        event.preventDefault(); ready=false; player?.controls.unlock(); $('scene-cover').hidden=false;
-        message('3D 화면이 중단되었습니다.','다시 불러오거나 2D 도구 화면에서 이어서 플레이하세요.');
-        $('scene-retry').hidden=false; $('scene-start').hidden=true;
-      });
-      $('lab-canvas').addEventListener('webglcontextrestored',()=>void loadModel());
+function installModel(loaded) {
+  loaded.updateMatrixWorld(true);
+  const boxes = [];
+  loaded.traverse(object => {
+    if (object.name.startsWith('COLLIDER_')) { boxes.push(new THREE.Box3().setFromObject(object)); object.visible = false; }
+    if (object.isMesh && !object.name.startsWith('COLLIDER_')) {
+      object.castShadow = false;
+      object.receiveShadow = false;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material.map) material.map.anisotropy = 1;
     }
-    const gltf=await Promise.race([
-      (async()=>{
-        const bytes=await readModel(signal); $('scene-progress').value=85;
-        $('scene-message').textContent='장비와 충돌 경계를 준비하고 있습니다.';
-        const loaded=await new GLTFLoader().parseAsync(bytes,new URL('assets/models/',location.href).href);
-        if(signal.aborted || token!==generation) clearResources(loaded.scene);
-        return loaded;
-      })(),
-      new Promise((_,reject)=> {timer=setTimeout(()=>{transaction.abort();reject(new Error('준비 시간이 초과되었습니다.'));},20000);}),
-    ]);
-    if(token!==generation || signal.aborted || mode!=='3d') {clearResources(gltf.scene);return;}
-    player?.dispose(); if(model) {scene.remove(model); clearResources(model);}
-    model=gltf.scene; model.updateMatrixWorld(true);
-    const boxes=[];
-    model.traverse(object=>{
-      if(object.name.startsWith('COLLIDER_')) {boxes.push(new THREE.Box3().setFromObject(object));object.visible=false;}
-      if(object.isMesh && !object.name.startsWith('COLLIDER_')) {
-        object.castShadow=/(Desk|Chair|Workstation|ServerRack|FileCabinet|Router|DOOR_)/.test(object.name) && !object.name.includes('Glass');
-        object.receiveShadow=true;
-        for(const mat of (Array.isArray(object.material)?object.material:[object.material])) {
-          if(mat.map) mat.map.anisotropy=Math.min(4,renderer.capabilities.getMaxAnisotropy());
-        }
-      }
-    });
-    batchStatic(model);
-    const spawnObject=model.getObjectByName('SPAWN_Player');
-    const spawn=spawnObject.getWorldPosition(new THREE.Vector3());
-    scene.add(model); player=new Player(camera,$('lab-canvas'),boxes,spawn);
-    interaction=new Interaction(model,camera,player,openTool);
-    player.controls.addEventListener('lock',()=>{
-      if(toolsOpen || mode!=='3d') {player.controls.unlock();return;}
-      $('scene-cover').hidden=true; $('crosshair').hidden=false; previousTime=performance.now();
-    });
-    player.controls.addEventListener('unlock',()=>{
-      $('crosshair').hidden=true; $('interaction-prompt').hidden=true;
-      if(mode==='3d' && !toolsOpen) {$('scene-cover').hidden=false;pauseMessage();}
-    });
-    ready=true; $('lab-world').dataset.state='ready'; $('scene-progress').value=100; pauseMessage();
-  } catch(error) {
-    if(token!==generation || mode!=='3d') return;
-    $('lab-world').dataset.state='error';
-    message('실습실을 열지 못했습니다.',`${error.message} 다시 시도하거나 2D 도구 화면에서 계속할 수 있습니다.`);
-    $('scene-progress').hidden=true; $('scene-retry').hidden=false; $('scene-start').hidden=true;
-    console.warn('Security Lab 3D unavailable:',error.message);
-  } finally {clearTimeout(timer);}
+  });
+  const spawnObject = loaded.getObjectByName('SPAWN_Player');
+  if (!spawnObject) throw new Error('실습실의 시작 위치를 읽을 수 없습니다.');
+  const spawn = spawnObject.getWorldPosition(new THREE.Vector3());
+  batchStatic(loaded);
+  player?.dispose();
+  if (model) { scene.remove(model); clearResources(model); }
+  model = loaded;
+  scene.add(model);
+  player = new Player(camera, $('lab-canvas'), boxes, spawn);
+  interaction = new Interaction(model, camera, player, openTool);
+  player.controls.addEventListener('lock', () => {
+    if (!ready || !healthyContext() || toolsOpen || mode !== '3d') { player.controls.unlock(); return; }
+    $('scene-cover').hidden = true;
+    $('crosshair').hidden = false;
+    previousTime = performance.now();
+  });
+  player.controls.addEventListener('unlock', () => {
+    $('crosshair').hidden = true;
+    $('interaction-prompt').hidden = true;
+    if (mode === '3d' && !toolsOpen) { $('scene-cover').hidden = false; pauseMessage(); }
+  });
 }
-function openTool(kind,label='조사 노트') {
-  if(mode!=='3d') return;
-  toolsOpen=true; player?.controls.unlock(); player?.clear();
-  $('scene-cover').hidden=true; $('lab-tools').hidden=false; $('tool-toolbar').hidden=false;
-  $('lab-tools').setAttribute('role','dialog'); $('lab-tools').setAttribute('aria-modal','true');
-  $('lab-tools').setAttribute('aria-label',label); $('tool-source').textContent=label;
-  $('lab-world').inert=true; $('view-switch').disabled=true;
-  currentTab=kind==='admin' ? (mission?.id==='tutorial'?'terminal':'settings') : kind;
-  requestTool(currentTab);
-  $('lab-tools').scrollTop=0;
-  if(kind==='brief') {$('hint-copy').scrollIntoView({block:'center'}); $('hint').focus();}
-  else if(currentTab==='terminal') $('command').focus();
-  else $('tool-close').focus();
+async function renderFirstFrame(token, signal) {
+  await waitForContext(token, signal);
+  await new Promise((resolve, reject) => {
+    let frame;
+    const cleanup = () => { cancelAnimationFrame(frame); signal.removeEventListener('abort', cancelled); };
+    const cancelled = () => { cleanup(); reject(signal.reason instanceof Error ? signal.reason : aborted()); };
+    signal.addEventListener('abort', cancelled, { once: true });
+    frame = requestAnimationFrame(() => {
+      try {
+        checkAttempt(token, signal);
+        if (!healthyContext()) throw new Error('3D 그래픽 연결이 복원되지 않았습니다.');
+        renderer.render(scene, camera);
+        if (!healthyContext() || renderer.info.render.calls === 0) throw new Error('3D 첫 화면을 표시하지 못했습니다.');
+        renderedFrames++;
+        frame = requestAnimationFrame(() => {
+          try {
+            checkAttempt(token, signal);
+            if (!healthyContext()) throw new Error('3D 그래픽 연결이 복원되지 않았습니다.');
+            cleanup(); resolve();
+          } catch (error) { cleanup(); reject(error); }
+        });
+      } catch (error) { cleanup(); reject(error); }
+    });
+    if (signal.aborted) cancelled();
+  });
+}
+function loadModel() {
+  preparation?.controller.abort(aborted());
+  const token = ++generation, controller = new AbortController(), signal = controller.signal;
+  const attempt = { controller, promise: null };
+  preparation = attempt;
+  ready = false;
+  firstFrameReady = false;
+  stopInput();
+  $('lab-world').dataset.state = 'loading';
+  $('lab-world').setAttribute('aria-busy', 'true');
+  $('scene-cover').hidden = false;
+  message('실습실 준비 중', '공간과 조사 장비를 불러오고 있습니다.');
+  $('scene-progress').hidden = false;
+  $('scene-progress').value = 0;
+  $('scene-start').hidden = true;
+  $('scene-retry').hidden = true;
+  attempt.promise = (async () => {
+    const timer = setTimeout(() => controller.abort(new Error('준비 시간이 초과되었습니다.')), PREPARATION_TIMEOUT);
+    let pendingModel;
+    try {
+      // Abort covers fetch, context restoration, parsing and both first-frame waits.
+      const work = (async () => {
+        await ensureRenderer(token, signal);
+        checkAttempt(token, signal);
+        if (!model) {
+          const bytes = await readModel(signal, token);
+          $('scene-progress').value = 85;
+          $('scene-message').textContent = '장비와 충돌 경계를 준비하고 있습니다.';
+          const loaded = await new GLTFLoader().parseAsync(bytes, new URL('assets/models/', location.href).href);
+          if (signal.aborted || token !== generation || mode !== '3d') { clearResources(loaded.scene); checkAttempt(token, signal); }
+          pendingModel = loaded.scene;
+          installModel(pendingModel);
+          pendingModel = undefined;
+        }
+        checkAttempt(token, signal);
+        await renderFirstFrame(token, signal);
+      })();
+      const interrupted = new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason instanceof Error ? signal.reason : aborted()), { once: true });
+      });
+      await Promise.race([work, interrupted]);
+      checkAttempt(token, signal);
+      if (!healthyContext()) throw new Error('3D 그래픽 연결이 복원되지 않았습니다.');
+      firstFrameReady = true;
+      ready = true;
+      $('lab-world').dataset.state = 'ready';
+      $('lab-world').setAttribute('aria-busy', 'false');
+      $('scene-progress').value = 100;
+      previousTime = 0;
+      pauseMessage();
+    } catch (error) {
+      if (pendingModel) { clearResources(pendingModel); pendingModel = undefined; }
+      if (token === generation && mode === '3d') showError(error);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      if (preparation === attempt) preparation = undefined;
+    }
+  })();
+  return attempt.promise;
 }
 function nativeDialogOpen() { return Boolean(document.querySelector('dialog[open]')); }
+function busy() { return Boolean(mission?.busy); }
+function openTool(kind, label = '조사 노트') {
+  if (mode !== '3d' || !ready || !healthyContext() || nativeDialogOpen()) return;
+  toolOpener = document.activeElement;
+  toolsOpen = true;
+  stopInput();
+  $('scene-cover').hidden = true;
+  $('lab-tools').hidden = false;
+  $('tool-toolbar').hidden = false;
+  $('lab-tools').setAttribute('role', 'dialog');
+  $('lab-tools').setAttribute('aria-modal', 'true');
+  $('lab-tools').setAttribute('aria-label', label);
+  $('lab-tools').setAttribute('aria-busy', String(busy()));
+  $('tool-source').textContent = label;
+  $('lab-world').inert = true;
+  $('view-switch').disabled = true;
+  $('tool-close').disabled = busy();
+  currentTab = kind === 'admin' ? ((mission?.missionId || mission?.id) === 'tutorial' ? 'terminal' : 'settings') : kind;
+  requestTool(currentTab);
+  $('lab-tools').scrollTop = 0;
+  if (kind === 'brief') {
+    $('hint-copy').scrollIntoView({ block: 'center' });
+    (busy() || $('hint').disabled ? $('tool-close') : $('hint')).focus();
+  } else if (currentTab === 'terminal' && !$('command').disabled) $('command').focus();
+  else if (!$('tool-close').disabled) $('tool-close').focus();
+  else $('lab-tools').querySelector('[role="tabpanel"]:not([hidden])')?.focus();
+}
 function closeTool() {
-  if(!toolsOpen || nativeDialogOpen()) return;
-  toolsOpen=false; $('lab-tools').hidden=true; $('lab-world').inert=false; $('view-switch').disabled=false;
-  $('scene-cover').hidden=false; pauseMessage(); $('scene-start').focus();
+  if (!toolsOpen || nativeDialogOpen() || busy()) return;
+  const opener = toolOpener;
+  resetToolModal();
+  $('lab-tools').hidden = true;
+  $('scene-cover').hidden = false;
+  pauseMessage();
+  if (opener instanceof HTMLElement && opener !== document.body && opener.getClientRects().length && !opener.closest('[inert]')) opener.focus();
+  else $('scene-start').focus();
 }
 function lock() {
-  if(!ready || toolsOpen || mode!=='3d') return;
+  if (!ready || !healthyContext() || toolsOpen || mode !== '3d' || nativeDialogOpen()) return;
   player.controls.lock();
 }
 function animate(time) {
   requestAnimationFrame(animate);
-  const elapsed=previousTime ? time-previousTime:0;
-  const dt=Math.min(elapsed/1000,.1); previousTime=time;
-  if(mode!=='3d' || document.hidden || !renderer || !ready) return;
-  if(toolsOpen) return; // The frozen scene remains behind the tools without GPU work.
-  if(!toolsOpen) {
-    interaction.update(dt);
-    player.update(dt,interaction.boxes);
+  const elapsed = previousTime ? time - previousTime : 0;
+  const dt = Math.min(elapsed / 1000, .5);
+  previousTime = time;
+  if (mode !== '3d' || document.hidden || !renderer || !ready || !healthyContext() || toolsOpen) return;
+  const steps = Math.max(1, Math.ceil(dt / .1));
+  for (let step = 0; step < steps; step++) {
+    interaction.update(dt / steps);
+    player.update(dt / steps, interaction.boxes);
   }
-  const prompt=player.controls.isLocked?interaction.prompt():'';
-  $('interaction-prompt').textContent=prompt; $('interaction-prompt').hidden=!prompt;
-  $('crosshair').classList.toggle('target',Boolean(prompt));
-  renderer.render(scene,camera);
-  frameMs+=elapsed; frames++;
-  if(frameMs>=1000) {fps=Math.round(frames*1000/frameMs);frameMs=0;frames=0;}
+  const prompt = player.controls.isLocked ? interaction.prompt() : '';
+  $('interaction-prompt').textContent = prompt;
+  $('interaction-prompt').hidden = !prompt;
+  $('crosshair').classList.toggle('target', Boolean(prompt));
+  try {
+    renderer.render(scene, camera);
+    if (!healthyContext()) return;
+    renderedFrames++;
+  } catch (error) { cancelPreparation(error); return; }
+  frameMs += elapsed;
+  frames++;
+  if (frameMs >= 1000) { fps = Math.round(frames * 1000 / frameMs); frameMs = 0; frames = 0; }
 }
 export function get3DDiagnostics() {
-  const direction=camera?.getWorldDirection(new THREE.Vector3());
-  return {mode,ready,toolsOpen,pointerLocked:player?.controls.isLocked??false,tab:currentTab,
-    position:camera?.position.toArray(),rotation:camera?.rotation.toArray().slice(0,3),
-    yaw:direction?Math.atan2(-direction.x,-direction.z):0,pitch:direction?Math.asin(direction.y):0,
-    target:interaction?.target?.name??null,doors:interaction?.doors.map(d=>({name:d.object.name,angle:d.angle,target:d.target,pivot:d.object.position.toArray()}))??[],
-    colliders:player?.boxes.length??0,drawCalls:renderer?.info.render.calls??0,triangles:renderer?.info.render.triangles??0,fps,
-    renderer:renderer?renderer.getContext().getParameter(renderer.getContext().VERSION):null};
+  const direction = camera?.getWorldDirection(new THREE.Vector3());
+  let rendererVersion = null;
+  if (healthyContext()) {
+    try { rendererVersion = graphicsContext.getParameter(graphicsContext.VERSION); } catch { /* A loss may begin between checks. */ }
+  }
+  return {
+    mode, ready: ready && healthyContext(), firstFrameReady: firstFrameReady && healthyContext(),
+    contextLost: contextLost || Boolean(graphicsContext?.isContextLost()), renderedFrames, generation, initializing: Boolean(preparation),
+    toolsOpen, pointerLocked: player?.controls.isLocked ?? false, tab: currentTab,
+    position: camera?.position.toArray(), rotation: camera?.rotation.toArray().slice(0, 3),
+    yaw: direction ? Math.atan2(-direction.x, -direction.z) : 0, pitch: direction ? Math.asin(direction.y) : 0,
+    target: interaction?.target?.name ?? null,
+    doors: interaction?.doors.map(door => ({ name: door.object.name, angle: door.angle, target: door.target, pivot: door.object.position.toArray() })) ?? [],
+    colliders: player?.boxes.length ?? 0, drawCalls: renderer?.info.render.calls ?? 0,
+    triangles: renderer?.info.render.triangles ?? 0, fps, renderer: rendererVersion,
+  };
 }
 export function init3D() {
-  if(getComputedStyle(document.documentElement).getPropertyValue('--scene-styles-ready').trim()!=='1') throw new Error('3D 화면 스타일을 불러오지 못했습니다.');
-  observeMission(status=>{
-    mission=status; $('hud-title').textContent=status.title; $('hud-objective').textContent=status.objective;
-    $('hud-stage').textContent=`${status.stage} · 단서 ${status.clues}개 · ${status.score}/100`;
-    $('hud-mission').textContent=status.id==='tutorial'?'CASE 001 / 조사 준비':`CASE 001 / MISSION ${String(status.active).padStart(2,'0')}`;
-  });
-  $('scene-start').addEventListener('click',lock); $('lab-canvas').addEventListener('click',lock);
-  $('scene-retry').addEventListener('click',()=>void loadModel());
-  $('scene-fallback').addEventListener('click',()=>setMode('2d'));
-  $('view-switch').addEventListener('click',()=>setMode(mode==='3d'?'2d':'3d'));
-  $('world-2d').addEventListener('click',()=>setMode('2d'));
-  $('world-notes').addEventListener('click',()=>openTool('brief','조사 노트 / 현재 미션'));
-  $('world-reset').addEventListener('click',()=>{
-    player?.reset(); $('scene-cover').hidden=false; player?.controls.unlock(); pauseMessage();
-    clearTimeout(noticeTimer); $('world-location').textContent='출입구로 돌아왔습니다. 미션 진행은 유지됩니다.';
-    noticeTimer=setTimeout(()=>{$('world-location').textContent='SECURITY OPERATIONS / TRAINING FACILITY';},3000);
-  });
-  $('tool-close').addEventListener('click',closeTool);
-  document.addEventListener('keydown',event=>{
-    if(event.code==='KeyE' && !event.repeat && player?.controls.isLocked && !toolsOpen) {event.preventDefault(); interaction.interact();}
-    if(event.code==='Escape' && player?.controls.isLocked && !toolsOpen) {event.preventDefault();player.controls.unlock();}
-    if(event.code==='Escape' && toolsOpen && !nativeDialogOpen()) {event.preventDefault();closeTool();}
-    if(event.code==='Tab' && toolsOpen && !nativeDialogOpen()) {
-      const available=[...$('lab-tools').querySelectorAll('button,input,select,a[href]')].filter(e=>!e.disabled && e.tabIndex>=0 && e.getClientRects().length);
-      const first=available[0],last=available.at(-1);
-      if(event.shiftKey && document.activeElement===first) {event.preventDefault();last?.focus();}
-      else if(!event.shiftKey && document.activeElement===last) {event.preventDefault();first?.focus();}
-    }
-  });
-  document.addEventListener('visibilitychange',()=>{if(document.hidden) {player?.controls.unlock();player?.clear();} previousTime=0;});
-  document.addEventListener('pointerlockerror',()=>{
-    message('마우스 잠금을 허용해주세요.','화면의 탐색 시작을 다시 누르세요. 마우스 잠금을 사용할 수 없다면 2D 도구 화면에서 플레이할 수 있습니다.');
-  });
-  const query=new URLSearchParams(location.search).get('view');
-  const mobile=matchMedia('(pointer: coarse)').matches;
-  setMode(query==='2d' || (query!=='3d' && (savedView()==='2d' || mobile))?'2d':'3d');
-  requestAnimationFrame(animate);
+  if (getComputedStyle(document.documentElement).getPropertyValue('--scene-styles-ready').trim() !== '1') throw new Error('3D 화면 스타일을 불러오지 못했습니다.');
+  if (!initialized) {
+    initialized = true;
+    observeMission(status => {
+      mission = status;
+      $('hud-title').textContent = status.title;
+      $('hud-objective').textContent = status.objective;
+      $('hud-stage').textContent = `${status.stage} · 단서 ${status.clues}개 · ${status.score}/100`;
+      $('hud-mission').textContent = (status.missionId || status.id) === 'tutorial' ? 'CASE 001 / 조사 준비' : `CASE 001 / MISSION ${String(status.active).padStart(2, '0')}`;
+      $('tool-close').disabled = toolsOpen && busy();
+      if (toolsOpen) $('lab-tools').setAttribute('aria-busy', String(busy()));
+    });
+    $('scene-start').addEventListener('click', lock);
+    $('lab-canvas').addEventListener('click', lock);
+    $('scene-retry').addEventListener('click', () => document.dispatchEvent(new Event('scene3d-retry')));
+    $('world-notes').addEventListener('click', () => openTool('brief', '조사 노트 / 현재 미션'));
+    $('world-reset').addEventListener('click', () => {
+      player?.reset();
+      stopInput();
+      $('scene-cover').hidden = false;
+      pauseMessage();
+      clearTimeout(noticeTimer);
+      $('world-location').textContent = '출입구로 돌아왔습니다. 미션 진행은 유지됩니다.';
+      noticeTimer = setTimeout(() => { $('world-location').textContent = 'SECURITY OPERATIONS / TRAINING FACILITY'; }, 3000);
+    });
+    $('tool-close').addEventListener('click', closeTool);
+    window.addEventListener('resize', resize);
+    $('lab-canvas').addEventListener('webglcontextlost', event => {
+      event.preventDefault();
+      contextLost = true;
+      ready = false;
+      firstFrameReady = false;
+      stopInput();
+      resetToolModal();
+      $('lab-tools').hidden = mode === '3d';
+      if (mode !== '3d') return;
+      $('scene-cover').hidden = false;
+      message('3D 화면이 중단되었습니다.', '그래픽 연결 복원을 기다리고 있습니다. 다시 시도하거나 2D 도구 화면에서 이어서 플레이하세요.');
+      $('scene-start').hidden = true;
+      $('scene-retry').hidden = false;
+      if (!preparation) void loadModel().catch(() => {});
+    });
+    $('lab-canvas').addEventListener('webglcontextrestored', () => {
+      contextLost = graphicsContext?.isContextLost() ?? false;
+      if (mode === '3d' && !ready && !preparation) void loadModel().catch(() => {});
+    });
+    document.addEventListener('keydown', event => {
+      if (mode !== '3d' || nativeDialogOpen()) return;
+      if (event.code === 'KeyE' && !event.repeat && ready && player?.controls.isLocked && !toolsOpen) { event.preventDefault(); interaction.interact(); }
+      if (event.code === 'Escape' && player?.controls.isLocked && !toolsOpen) { event.preventDefault(); player.controls.unlock(); }
+      if (event.code === 'Escape' && toolsOpen) { event.preventDefault(); closeTool(); }
+      if (event.code === 'Tab' && toolsOpen) {
+        const available = [...$('lab-tools').querySelectorAll('button,input,select,textarea,a[href],[tabindex]')]
+          .filter(element => !element.disabled && element.tabIndex >= 0 && !element.closest('[inert]') && element.getClientRects().length);
+        const first = available[0], last = available.at(-1);
+        if (event.shiftKey && (document.activeElement === first || !available.includes(document.activeElement))) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !available.includes(document.activeElement))) { event.preventDefault(); first?.focus(); }
+      }
+    });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) stopInput(); previousTime = 0; });
+    document.addEventListener('pointerlockerror', () => {
+      if (mode !== '3d' || toolsOpen || !ready) return;
+      stopInput();
+      $('scene-cover').hidden = false;
+      message('마우스 잠금을 허용해주세요.', '화면의 탐색 시작을 다시 누르세요. 마우스 잠금을 사용할 수 없다면 2D 도구 화면에서 플레이할 수 있습니다.');
+    });
+    requestAnimationFrame(animate);
+  }
+  return setMode('3d');
 }

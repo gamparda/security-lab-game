@@ -18,14 +18,13 @@ test('두 탭의 오래된 진행은 전체 초기화 뒤에도 자동 저장을
 
 test('저장 실패 후 정상 저장은 실패 안내를 해제함', async ({ page }) => {
   await page.goto('/?view=2d'); await expect(page.locator('#game')).toBeVisible();
-  await page.evaluate(saveKey => {
+  await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {
-      if (key !== saveKey) return original.call(this, key, value);
       Storage.prototype.setItem = original;
       throw new DOMException('Full', 'QuotaExceededError');
     };
-  }, CURRENT_SAVE_KEY);
+  });
   await page.locator('#hint').click();
   await expect(page.locator('#notice')).toContainText('저장에 실패');
   await page.locator('#hint').click();
@@ -77,7 +76,7 @@ test('취소된 시작 시도의 늦은 오류는 진행 중인 재시도를 실
     requested(); await gate; await route.continue();
   });
   try {
-    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' }); await retryRequest;
+    await page.goto('/', { waitUntil: 'domcontentloaded' }); await retryRequest;
     await page.evaluate(() => {
       const old = document.createElement('script'); old.id = 'bootstrap-entry'; old.dataset.attempt = '0';
       document.head.append(old); old.dispatchEvent(new Event('error', { bubbles: true })); old.remove();
@@ -98,7 +97,7 @@ test('시작 스크립트 무응답은 두 번의 제한 시간 뒤 끝나고 �
     await gate; await route.continue();
   });
   try {
-    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' }); await firstRequest;
+    await page.goto('/', { waitUntil: 'domcontentloaded' }); await firstRequest;
     await page.clock.fastForward(8001); await secondRequest;
     await page.clock.fastForward(8001);
     await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
@@ -201,7 +200,7 @@ test('시작 스크립트가 늦어도 첫 화면은 스타일이 적용되고 �
   const gate = new Promise(resolve => { release = resolve; });
   await page.route('**/src/bootstrap.js', async route => { await gate; await route.continue(); });
   try {
-    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-screen')).toBeVisible();
     await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
     await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
@@ -221,7 +220,7 @@ test('로딩 화면 스타일 요청이 실패해도 게임 스타일과 초기�
 });
 
 test('HTML 응답에 주석이 추가되어도 실제 CSS와 게임 준비가 완료되면 표시함', async ({ page }) => {
-  await page.route('**/?view=2d', async route => {
+  await page.route('**/', async route => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text()) + '\n<!-- response annotation -->' });
   });
@@ -238,7 +237,7 @@ test('느린 CSS는 로딩 화면에서 기다리고 적용 후에만 게임을 
   const started = new Promise(resolve => { requested = resolve; });
   await page.route('**/src/style.css', async route => { requested(); await gate; await route.continue(); });
   try {
-    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await started;
     await expect(page.locator('#loading-screen')).toBeVisible();
     await expect(page.locator('#game')).toBeHidden();
@@ -301,7 +300,7 @@ test('응답하지 않는 CSS는 재시도 제한 시간 후 안내하고 늦게
     if (attempt === 1) await route.abort(); else await route.continue();
   });
   try {
-    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await firstRequest;
     await page.clock.fastForward(8001);
     await secondRequest;
@@ -362,7 +361,7 @@ test('게임 준비가 8초를 넘어도 30초 이내 완료되면 정상 표시
   await page.clock.install();
   await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
   try {
-    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
     await page.clock.fastForward(8001);
     await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
@@ -377,7 +376,7 @@ test('응답하지 않는 게임 모듈은 제한 시간 이후 안내하고 늦
   await page.clock.install();
   await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
   try {
-    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
     await page.clock.fastForward(30001);
     await expect(page.locator('#loading-message')).toContainText('게임 준비 시간이 오래 걸리고 있습니다');
@@ -575,7 +574,7 @@ test('파일 복구는 기준·변경 조사 후 열리고 잘못 고른 파일�
   await expect(budget).toBeEnabled();
   await page.getByRole('button', { name: 'notice.txt 선택 및 복구', exact: true }).click();
   await expect(budget).toBeEnabled();
-  await budget.focus(); await page.keyboard.press('Enter');
+  await budget.click();
   await expect(budget).toBeFocused();
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'hash files'); await command(page, 'verify');
