@@ -51,18 +51,39 @@ test('해시 계산 중 다른 탭이 저장해도 늦은 계산이 최신 진�
 });
 
 test('시작 스크립트가 차단돼도 오류 정보와 복사·재시도 수단이 표시됨', async ({ page }) => {
-  let requests = 0;
-  await page.route('**/src/bootstrap.js*', route => { requests++; return route.abort(); });
+  const requests = [];
+  await page.route('**/src/bootstrap.js*', route => { requests.push(new URL(route.request().url()).search); return route.abort(); });
   await page.goto('/');
   await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
   await expect(page.locator('#loading-retry')).toBeVisible();
   await page.locator('#loading-error summary').click();
   await expect(page.locator('#loading-detail')).toHaveValue(/src\/bootstrap.js/);
   await expect(page.locator('#copy-startup-error')).toBeVisible();
-  expect(requests).toBe(2);
+  // Firefox can issue a speculative request for the parser-created script.
+  expect([...new Set(requests)].sort()).toEqual(['', '?retry=1']);
+  expect(requests.filter(query => query === '?retry=1')).toHaveLength(1);
   await page.unroute('**/src/bootstrap.js*');
   await page.locator('#loading-retry').click();
   await expect(page.locator('#game')).toBeVisible();
+});
+
+test('취소된 시작 시도의 늦은 오류는 진행 중인 재시도를 실패시키지 않음', async ({ page }) => {
+  let release, requested;
+  const gate = new Promise(resolve => { release = resolve; });
+  const retryRequest = new Promise(resolve => { requested = resolve; });
+  await page.route('**/src/bootstrap.js*', async route => {
+    if (!new URL(route.request().url()).searchParams.has('retry')) { await route.abort(); return; }
+    requested(); await gate; await route.continue();
+  });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' }); await retryRequest;
+    await page.evaluate(() => {
+      const old = document.createElement('script'); old.id = 'bootstrap-entry'; old.dataset.attempt = '0';
+      document.head.append(old); old.dispatchEvent(new Event('error', { bubbles: true })); old.remove();
+    });
+    await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
+    release(); await expect(page.locator('#game')).toBeVisible();
+  } finally { release(); }
 });
 
 test('시작 스크립트 무응답은 두 번의 제한 시간 뒤 끝나고 늦은 파일은 실행하지 않음', async ({ page }) => {

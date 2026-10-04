@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#111a28">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-xYwV37A+arRHUmr3BRmQ7ayf58hQtlweP3B1WSSUi+Y='; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-m3X0T7Cfyid8U2HUdHQ+RHLSA48NGjWLjusnSVQw7Dw='; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Security Lab · 보안 체험 게임</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="src/loading.css">
@@ -50,7 +50,7 @@
     timer = setTimeout(() => retry('Start script timed out (8s)'), 8000);
   }
   window.addEventListener('error', event => {
-    if (event.target?.id === 'bootstrap-entry') retry('Start script failed to load');
+    if (event.target?.id === 'bootstrap-entry' && Number(event.target.dataset.attempt) === attempt) retry('Start script failed to load');
   }, true);
   timer = setTimeout(() => retry('Start script timed out (8s)'), 8000);
   whenReady(() => {
