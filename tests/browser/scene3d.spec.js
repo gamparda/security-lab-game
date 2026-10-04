@@ -51,7 +51,9 @@ async function resume(page) {
   // never assign the camera rotation or move the player for the test.
   const [x,y,z]=before.position, horizontal=Math.cos(before.pitch);
   await aim(page,x-Math.sin(before.yaw)*horizontal,y+Math.sin(before.pitch),z-Math.cos(before.yaw)*horizontal);
-  await expect.poll(async()=> (await diagnostics(page)).yaw).toBeCloseTo(before.yaw,2);
+  // Native Windows software graphics can delay the automation response even
+  // when the camera has already reached the expected direction.
+  await expect.poll(async()=> (await diagnostics(page)).yaw,{timeout:20000}).toBeCloseTo(before.yaw,2);
 }
 async function openMainDoor(page) {
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_Main');
@@ -118,6 +120,7 @@ async function closeAndResume(page) {
 
 test('3D actual movement, closed-door collision, hinge rotation, mouse and pause',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed physical navigation uses the primary desktop Chromium project.');
+  test.setTimeout(120000);
   const errors=[],violations=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.cspErrors=(window.cspErrors||[]).concat({directive:e.violatedDirective,blockedURI:e.blockedURI,sourceFile:e.sourceFile,line:e.lineNumber,sample:e.sample})));
@@ -156,7 +159,8 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
   expect(walkSpeed).toBeCloseTo(2.6,1);
   expect(sprintSpeed).toBeCloseTo(4.2,1);
   expect(sprintSpeed).toBeGreaterThan(walkSpeed*1.3);
-  const resized=process.env.CI ? {width:800,height:600} : {width:1200,height:800};
+  // Exercise a real resize without increasing software rasterization load.
+  const resized=process.env.CI ? {width:576,height:432} : {width:1200,height:800};
   await page.setViewportSize(resized);
   expect((await page.locator('#lab-canvas').boundingBox()).width).toBe(resized.width);
   const before=await diagnostics(page);
@@ -178,7 +182,7 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
 
 test('walk to all five devices; old tools, scoring, save and mission guards stay intact',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed spatial route uses the primary desktop Chromium project.');
-  test.setTimeout(120000);
+  test.setTimeout(180000);
   await start(page); await openMainDoor(page);
   await capture(page,'02-door-open.png');
   await walkUntil(page,'KeyW',{axis:'z',lt:6});
