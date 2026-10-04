@@ -9,7 +9,7 @@ $second = $null
 $originalGameUrl = $env:GAME_URL
 
 function Start-IsolatedGame($diagnostic) {
-  return (Start-Process -FilePath $exe -WorkingDirectory $isolated -ArgumentList @('--diagnostics', "`"$diagnostic`"", '--no-browser') -PassThru)
+  return (Start-Process -FilePath $exe -WorkingDirectory $isolated -ArgumentList @('--diagnostics', "`"$diagnostic`"", '--no-browser') -WindowStyle Hidden -PassThru)
 }
 
 function Wait-ForGame($diagnostic) {
@@ -53,5 +53,8 @@ try {
   foreach ($process in @($second, $first)) {
     if ($null -ne $process) { taskkill /PID $process.Id /T /F | Out-Null }
   }
-  Remove-Item $isolated -Recurse -Force -ErrorAction SilentlyContinue
+  $checked = [IO.Path]::GetFullPath($isolated)
+  $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+  if (-not $checked.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase) -or (Split-Path $checked -Leaf) -notlike 'Security Lab 테스트 *') { throw 'Unsafe cleanup target' }
+  Remove-Item -LiteralPath $checked -Recurse -Force -ErrorAction SilentlyContinue
 }

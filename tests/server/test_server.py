@@ -42,7 +42,9 @@ class ServerTest(unittest.TestCase):
                 self.assertEqual(status, 200)
                 self.assertEqual(headers['Content-Type'], content_type)
                 self.assertEqual(body, (module.ROOT / name).read_bytes())
-                self.assertIn("connect-src 'none'", headers['Content-Security-Policy'])
+                self.assertIn("connect-src 'self' blob:", headers['Content-Security-Policy'])
+                self.assertNotIn("'unsafe-inline'", headers['Content-Security-Policy'])
+                self.assertNotIn("'unsafe-eval'", headers['Content-Security-Policy'])
                 self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
 
     def test_home_and_head(self):
@@ -55,7 +57,10 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(head_headers['Content-Length'], headers['Content-Length'])
 
     def test_private_files_and_traversal_denied(self):
-        for path in ['/.git/config', '/README.md', '/run.py', '/src/', '/%2e%2e/index.html', '/src/../index.html']:
+        for path in ['/.git/config', '/README.md', '/run.py', '/src/', '/%2e%2e/index.html', '/src/../index.html',
+                     '/assets/', '/assets/models/', '/assets/authoring/painted_concrete_02_Diffuse_1k.jpg',
+                     '/assets/models/security_lab.json', '/vendor/three/package.json', '/vendor/../run.py',
+                     '/assets/%2e%2e/run.py', '/assets%5c..%5crun.py', '/assets/models/security_lab.glb/extra']:
             with self.subTest(path=path):
                 self.assertEqual(self.request('GET', path)[0], 404)
 

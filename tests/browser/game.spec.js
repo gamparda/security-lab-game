@@ -6,7 +6,7 @@ import { ORIGINAL_FILES } from '../../src/missions.js';
 test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용됨', async ({ page }) => {
   for (let attempt = 0; attempt < 3; attempt++) {
     const stylesheet = page.waitForResponse(response => new URL(response.url()).pathname === '/src/style.css');
-    if (attempt === 0) await page.goto('/');
+    if (attempt === 0) await page.goto('/?view=2d');
     else await page.reload();
     const response = await stylesheet;
     expect(response.status()).toBe(200);
@@ -25,7 +25,7 @@ test('시작 스크립트가 늦어도 첫 화면은 스타일이 적용되고 �
   const gate = new Promise(resolve => { release = resolve; });
   await page.route('**/src/bootstrap.js', async route => { await gate; await route.continue(); });
   try {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-screen')).toBeVisible();
     await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
     await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
@@ -38,18 +38,18 @@ test('시작 스크립트가 늦어도 첫 화면은 스타일이 적용되고 �
 
 test('로딩 화면 스타일 요청이 실패해도 게임 스타일과 초기화가 끝나면 실행함', async ({ page }) => {
   await page.route('**/src/loading.css', route => route.abort());
-  await page.goto('/');
+  await page.goto('/?view=2d');
   await expect(page.locator('#game')).toBeVisible();
   await expect(page.locator('#loading-retry')).toBeHidden();
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
 });
 
 test('HTML 응답에 주석이 추가되어도 실제 CSS와 게임 준비가 완료되면 표시함', async ({ page }) => {
-  await page.route('**/', async route => {
+  await page.route('**/?view=2d', async route => {
     const response = await route.fetch();
     await route.fulfill({ response, body: (await response.text()) + '\n<!-- response annotation -->' });
   });
-  await page.goto('/');
+  await page.goto('/?view=2d');
   await expect(page.locator('#loading-screen')).toBeHidden();
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(12, 18, 28)');
   await expect(page.locator('.workspace')).toHaveCSS('display', 'grid');
@@ -62,7 +62,7 @@ test('느린 CSS는 로딩 화면에서 기다리고 적용 후에만 게임을 
   const started = new Promise(resolve => { requested = resolve; });
   await page.route('**/src/style.css', async route => { requested(); await gate; await route.continue(); });
   try {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
     await started;
     await expect(page.locator('#loading-screen')).toBeVisible();
     await expect(page.locator('#game')).toBeHidden();
@@ -107,7 +107,7 @@ test('CSS 재시도도 실패하면 게임을 숨기고 수동 재시도로 진�
 
 test('200 응답이어도 CSS가 적용되지 않았으면 게임을 표시하지 않음', async ({ page }) => {
   await page.route('**/src/style.css*', route => route.fulfill({ status: 200, contentType: 'text/css', body: '/* missing game styles */' }));
-  await page.goto('/');
+  await page.goto('/?view=2d');
   await expect(page.locator('#loading-message')).toContainText('화면을 불러오지 못했습니다');
   await expect(page.locator('#game')).toBeHidden();
 });
@@ -125,7 +125,7 @@ test('응답하지 않는 CSS는 재시도 제한 시간 후 안내하고 늦게
     if (attempt === 1) await route.abort(); else await route.continue();
   });
   try {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
     await firstRequest;
     await page.clock.fastForward(8001);
     await secondRequest;
@@ -186,7 +186,7 @@ test('게임 준비가 8초를 넘어도 30초 이내 완료되면 정상 표시
   await page.clock.install();
   await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
   try {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
     await page.clock.fastForward(8001);
     await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'true');
@@ -201,7 +201,7 @@ test('응답하지 않는 게임 모듈은 제한 시간 이후 안내하고 늦
   await page.clock.install();
   await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
   try {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
     await page.clock.fastForward(30001);
     await expect(page.locator('#loading-message')).toContainText('게임 준비 시간이 오래 걸리고 있습니다');
@@ -228,7 +228,7 @@ async function missionState(index, completed = false) {
 async function seedGame(page, state) {
   let saved;
   saveGame(state, { setItem: (_key, value) => { saved = value; } });
-  await page.goto('/');
+  await page.goto('/?view=2d');
   await page.evaluate(({ key, value }) => localStorage.setItem(key, value), { key: SAVE_KEY, value: saved });
   await page.reload();
   await expect(page.locator('#mission-title')).toHaveText(['조사 준비', '노출된 서비스', '약한 로그인 정책', '변조된 자료'][state.active]);
@@ -253,7 +253,7 @@ test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 �
   const requests = [], errors = [];
   page.on('request', request => requests.push(request.url()));
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/');
+  await page.goto('/?view=2d');
   await expect(page.locator('#mission-title')).toHaveText('조사 준비');
   await tutorial(page);
   await command(page, 'scan club-server'); await command(page, 'inspect club-server 8080');
@@ -303,7 +303,7 @@ test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 �
   expect(requests.every(url => new URL(url).hostname === 'localhost')).toBe(true);
 });
 test('입력은 텍스트로 표시되고 외부 URL에 접속하지 않음', async ({ page }) => {
-  await page.goto('/'); await tutorial(page);
+  await page.goto('/?view=2d'); await tutorial(page);
   const requests = [];
   page.on('request', request => requests.push(request.url()));
   const malicious = '<img src=x onerror="window.hacked=true">';
@@ -316,7 +316,7 @@ test('입력은 텍스트로 표시되고 외부 URL에 접속하지 않음', as
 });
 test('손상 저장 안내와 키보드 탭 전환', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('security-lab-game:v1', '{broken'));
-  await page.goto('/');
+  await page.goto('/?view=2d');
   await expect(page.locator('#notice')).toContainText('저장 데이터가 손상');
   await page.getByRole('tab', { name: '가상 터미널' }).focus();
   await page.keyboard.press('ArrowRight');

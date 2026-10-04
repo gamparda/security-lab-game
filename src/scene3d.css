@@ -1,0 +1,35 @@
+:root { --scene-styles-ready: 1; }
+[hidden] { display: none !important; }
+.lab-world { position: fixed; inset: 0; background: #101b24; color: #e9f1f4; }
+#lab-canvas { display: block; width: 100%; height: 100%; outline: none; }
+body.lab-3d { overflow: hidden; }
+body.lab-3d .topbar { position: fixed; top: 0; left: 0; right: 0; height: 70px; max-width: none; padding: 0 34px; z-index: 3; background: linear-gradient(#0b141df2,#0b141d00); border: 0; }
+.world-actions { position: absolute; right: 30px; top: 75px; display: flex; gap: 8px; z-index: 4; }
+.world-actions button { background: #101d28d9; border-color: #ffffff26; font-size: 12px; padding: 10px 14px; }
+.mission-hud { position: absolute; top: 94px; left: 34px; width: min(345px,34vw); padding: 22px; background: #0d1b27eb; border: 1px solid #ffffff16; border-left: 3px solid #4fd7b2; border-radius: 4px; pointer-events: none; }
+.mission-hud .eyebrow { font-size: 10px; letter-spacing: 2px; color: #68d9c1; margin: 0 0 10px; }
+.mission-hud h2 { font-size: 20px; margin: 0 0 10px; }
+.mission-hud p { font-size: 12px; line-height: 1.7; color: #b4c5d0; margin: 0; }
+.mission-hud .hud-stage { color: #68d9c1; margin-top: 14px; font-size: 11px; }
+.crosshair { position: absolute; top: 50%; left: 50%; width: 5px; height: 5px; border-radius: 50%; background: #ffffffc9; box-shadow: 0 0 0 3px #08131a60; pointer-events: none; }
+.crosshair.target { background: #70ffd1; box-shadow: 0 0 0 5px #5ccfa133; }
+.interaction-prompt { position: absolute; top: calc(50% + 32px); left: 50%; transform: translateX(-50%); padding: 10px 20px; border: 1px solid #7fdbca55; border-radius: 4px; background: #0a1927e6; font-size: 13px; white-space: nowrap; pointer-events: none; }
+.world-footer { position: absolute; bottom: 25px; left: 34px; right: 34px; display: flex; justify-content: space-between; color: #d7e3ec; font-size: 11px; letter-spacing: .6px; pointer-events: none; text-shadow: 0 1px 4px #000; }
+.world-footer kbd { padding: 4px 6px; border: 1px solid #ffffff50; border-radius: 3px; background: #0b1725bb; margin: 0 2px; font: inherit; }
+.scene-cover { position: absolute; inset: 0; display: grid; place-items: center; z-index: 5; background: #07111c66; backdrop-filter: blur(3px); pointer-events: none; }
+.scene-card { pointer-events: auto; }
+.scene-card { width: min(510px,calc(100vw - 36px)); padding: 40px; background: #0c1a28f5; border: 1px solid #7ea6bd35; box-shadow: 0 25px 100px #0008; border-radius: 8px; }
+.scene-card .eyebrow { color: #5ecbb2; letter-spacing: 3px; font-size: 10px; }
+.scene-card h2 { font-size: 30px; line-height: 1.3; margin: 18px 0; }
+.scene-card p { color: #b7c8d4; font-size: 14px; line-height: 1.8; }
+.scene-card .scene-actions { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+.scene-card progress { width: 100%; height: 5px; accent-color: #54d5b3; }
+.scene-card .scene-note { font-size: 11px; color: #829bad; margin: 20px 0 0; }
+body.lab-3d #lab-tools { position: fixed; z-index: 8; top: 28px; bottom: 28px; left: max(28px,calc((100vw - 1240px)/2)); right: max(28px,calc((100vw - 1240px)/2)); overflow: auto; max-width: none; margin: 0; padding: 24px; border: 1px solid #587c9555; border-radius: 8px; background: #0c121cf9; box-shadow: 0 0 0 100vmax #0009; }
+body.lab-3d #lab-tools .intro { display: none; }
+.tool-toolbar { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #ffffff18; padding-bottom: 15px; margin-bottom: 22px; gap: 16px; }
+.tool-toolbar p { margin: 0; color: #6bd7ba; font-size: 12px; }
+.tool-toolbar button { flex-shrink: 0; }
+.view-switch { margin-left: 20px; font-size: 12px; padding: 7px 12px; }
+@media (max-width: 700px) { .world-actions { right: 14px; top: 74px; } .mission-hud { left: 14px; top: 127px; width: 70vw; } body.lab-3d .topbar { padding: 0 18px; } .world-footer { left: 14px; right: 14px; } body.lab-3d #lab-tools { inset: 10px; padding: 16px; } .scene-card { padding: 25px; } }
+@media (prefers-reduced-motion: reduce) { .scene-cover { backdrop-filter: none; } }

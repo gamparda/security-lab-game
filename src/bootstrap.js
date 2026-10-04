@@ -73,6 +73,13 @@
       }
       document.getElementById('game').hidden = false;
       screen.hidden = true;
+      // The original tools are ready before optional WebGL starts. A 3D failure never
+      // prevents mission play, save restoration, or startup recovery in 2D.
+      import('./scene3d.js').then(module => module.init3D()).catch(error => {
+        console.warn('Security Lab 3D module unavailable:', error.message);
+        document.getElementById('notice').textContent = '3D 화면을 불러오지 못했습니다. 아래 도구 화면에서 계속 플레이할 수 있습니다. 다시 불러오면 3D 준비를 재시도합니다.';
+        document.getElementById('view-switch').disabled = true;
+      });
       const address = new URL(location.href);
       if (address.searchParams.has('startup-retry')) {
         address.searchParams.delete('startup-retry');

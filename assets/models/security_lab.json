@@ -1,0 +1,68 @@
+{
+  "objects": 131,
+  "triangles": 49660,
+  "materials": 12,
+  "materialNames": [
+    "LAB_Amber",
+    "LAB_Blue",
+    "LAB_Concrete_PolyHaven",
+    "LAB_Dark",
+    "LAB_Glass",
+    "LAB_Ink",
+    "LAB_LED",
+    "LAB_Light",
+    "LAB_Metal",
+    "LAB_Screen",
+    "LAB_Wall",
+    "LAB_Wood"
+  ],
+  "textures": [
+    {
+      "name": "painted_concrete_02_Diffuse_1k.jpg",
+      "size": [
+        1024,
+        1024
+      ]
+    },
+    {
+      "name": "painted_concrete_02_nor_gl_1k.jpg",
+      "size": [
+        1024,
+        1024
+      ]
+    },
+    {
+      "name": "painted_concrete_02_Rough_1k.jpg",
+      "size": [
+        1024,
+        1024
+      ]
+    },
+    {
+      "name": "LAB_Screen_Status_512",
+      "size": [
+        512,
+        512
+      ]
+    }
+  ],
+  "dimensionsMetres": [
+    24,
+    23,
+    3.5
+  ],
+  "doors": [
+    "DOOR_Main",
+    "DOOR_ServerRoom",
+    "DOOR_RecordsRoom"
+  ],
+  "interactive": [
+    "INTERACT_ServerRack",
+    "INTERACT_AdminPC",
+    "INTERACT_Router",
+    "INTERACT_FileCabinet",
+    "INTERACT_Whiteboard"
+  ],
+  "glbBytes": 4159128,
+  "authoring": "Blender 5.2.2 LTS"
+}

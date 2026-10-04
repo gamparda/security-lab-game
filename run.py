@@ -23,10 +23,24 @@ PUBLIC_FILES = {
     'src/storage.js': 'text/javascript; charset=utf-8',
     'src/loading.css': 'text/css; charset=utf-8',
     'src/style.css': 'text/css; charset=utf-8',
+    'src/labbridge.js': 'text/javascript; charset=utf-8',
+    'src/collision.js': 'text/javascript; charset=utf-8',
+    'src/player3d.js': 'text/javascript; charset=utf-8',
+    'src/interaction3d.js': 'text/javascript; charset=utf-8',
+    'src/scene3d.js': 'text/javascript; charset=utf-8',
+    'src/batch3d.js': 'text/javascript; charset=utf-8',
+    'src/scene3d.css': 'text/css; charset=utf-8',
+    'assets/models/security_lab.glb': 'model/gltf-binary',
+    'vendor/three/build/three.module.js': 'text/javascript; charset=utf-8',
+    'vendor/three/build/three.core.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/loaders/GLTFLoader.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/utils/BufferGeometryUtils.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/utils/SkeletonUtils.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/controls/PointerLockControls.js': 'text/javascript; charset=utf-8',
 }
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; "
-    "connect-src 'none'; img-src 'self' data:; object-src 'none'; "
+    "connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
 
@@ -35,7 +49,10 @@ def load_game_assets():
     assets = {}
     for name in PUBLIC_FILES:
         try:
-            content = (ROOT / name).read_bytes()
+            target = (ROOT / name).resolve()
+            if not target.is_relative_to(ROOT.resolve()) or not target.is_file():
+                raise OSError('not a regular bundled file inside the game directory')
+            content = target.read_bytes()
         except OSError as error:
             raise OSError(name + ': bundled file unreadable (' + str(error) + ')') from error
         if not content:

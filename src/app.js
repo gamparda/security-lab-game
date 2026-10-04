@@ -1,6 +1,7 @@
 import { MISSIONS, ORIGINAL_FILES } from './missions.js';
 import { initialState, progress, stage, score, runCommand, answerFeedback, accepted, loginSimulation, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
 import { loadGame, saveGame } from './storage.js';
+import { publishMission, onToolRequest } from './labbridge.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, text, className) => {
@@ -48,6 +49,7 @@ function switchTab(name) {
     $('panel-' + tab.dataset.tab).hidden = !selected;
   }
 }
+onToolRequest(name => { if (name !== 'brief') switchTab(name); });
 const clueNames = { help: '게임 명령 사용법', approval: '승인된 조사 범위', scan: '서비스 포트 목록', 'port-443': '자료 서비스 운영 조건', 'port-8080': '관리 서비스가 불필요함', rescan: '방어 후 포트 재조회', login: '더미 후보와 시도 기록', baseline: '승인된 오프라인 기준', hash: 'SHA-256 비교 결과', mismatch: 'budget.csv 변경 감지' };
 function render() {
   const focused = document.activeElement;
@@ -89,6 +91,7 @@ function render() {
   $('reset-mission').disabled = busy;
   $('reset-all').disabled = busy;
   renderSettings(); renderFiles(); renderComparison(); renderResults();
+  publishMission({ active: state.active, title: m.title, objective: m.objective, stage: stage(state), score: score(state), clues: p.clues.length, busy });
   const commands = [ ['help', 'inspect approval', 'verify'], ['scan club-server', 'inspect club-server 443', 'inspect club-server 8080', 'verify'], ['inspect login', 'verify'], ['inspect baseline', 'hash files', 'verify'] ][state.active];
   $('quick-commands').replaceChildren(...commands.map(command => {
     const button = el('button', command); button.disabled = busy;
