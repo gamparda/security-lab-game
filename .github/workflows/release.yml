@@ -46,6 +46,10 @@ jobs:
               event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
               previous = json.loads(subprocess.check_output(['git', 'show', event['before'] + ':package.json']))['version']
               publish = tuple(map(int, version.split('.'))) > tuple(map(int, previous.split('.')))
+              if version == previous:
+                  # A failed package run creates no tag. Publish the corrected
+                  # build with the same still-unreleased version.
+                  publish = subprocess.run(['git', 'show-ref', '--verify', '--quiet', 'refs/tags/' + tag]).returncode == 1
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'publish={str(publish).lower()}\ntag={tag}\n')
           PY

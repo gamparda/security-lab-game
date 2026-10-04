@@ -96,7 +96,9 @@ async function walkUntil(page,key,condition,timeout=16000) {
   },{key,condition,timeout});
   await page.keyboard.down(key);
   try {
-    await expect.poll(()=>page.evaluate(()=>window.__labWalk.done),{timeout:timeout+5000,intervals:[40,70,100]}).toBe(true);
+    // The in-page physical deadline stays unchanged; allow a delayed native
+    // graphics/automation response to deliver its result after that deadline.
+    await expect.poll(()=>page.evaluate(()=>window.__labWalk.done),{timeout:timeout+30000,intervals:[40,70,100]}).toBe(true);
     expect(await page.evaluate(()=>window.__labWalk.error)).toBeNull();
   } finally {
     await page.evaluate(()=>{window.__labWalk?.cancel(); delete window.__labWalk;});

@@ -117,10 +117,17 @@ class GameServer(ThreadingHTTPServer):
 
 
 class GameHandler(BaseHTTPRequestHandler):
+    # Reuse browser connections across the local module graph instead of
+    # opening a socket per file. Bound idle worker lifetime as well.
+    protocol_version = 'HTTP/1.1'
+    timeout = 10
+
     def respond(self, status, content, content_type='text/plain; charset=utf-8', digest=None):
         self.send_response(status)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(content)))
+        if self.close_connection:
+            self.send_header('Connection', 'close')
         self.send_header('Content-Security-Policy', CSP)
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cache-Control', 'no-store')
@@ -133,7 +140,7 @@ class GameHandler(BaseHTTPRequestHandler):
                 self.wfile.write(content)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             # Reloads and failed asset retries can cancel an in-flight response.
-            pass
+            self.close_connection = True
 
     def do_GET(self):
         try:
@@ -161,6 +168,8 @@ class GameHandler(BaseHTTPRequestHandler):
     do_HEAD = do_GET
 
     def reject_write(self):
+        # Do not interpret an unread request body as a second request.
+        self.close_connection = True
         self.respond(405, b'Method not allowed')
 
     do_POST = reject_write
