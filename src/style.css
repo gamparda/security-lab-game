@@ -31,7 +31,7 @@ p { line-height: 1.75; }
 .case-card strong { display: block; margin-top: 12px; font-size: 19px; }
 .case-card p { font-size: 13px; color: #a5b9c9; }
 .case-card .case-id { color: #889cae; }
-.mission-nav { display: grid; grid-template-columns: repeat(4,1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 26px; }
+.mission-nav { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); list-style: none; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 26px; }
 .mission-step { padding: 18px 20px; display: flex; align-items: center; gap: 12px; background: #111b29; border-right: 1px solid var(--line); color: var(--muted); }
 .mission-step:last-child { border-right: 0; }
 .mission-step > span { font: 12px ui-monospace,monospace; border: 1px solid #344459; border-radius: 6px; padding: 6px; }
@@ -115,5 +115,17 @@ dialog p { color: #b0bfd1; font-size: 13px; }
 .sr-only, .skip-link { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .skip-link:focus { clip: auto; width: auto; height: auto; z-index: 10; padding: 12px; background: #172434; color: var(--accent); }
 @media (max-width: 1050px) { .mission-step { padding: 15px 12px; gap: 8px; } .mission-step small { display: none; } .workspace { grid-template-columns: minmax(0,1fr) 290px; gap: 16px; } }
-@media (max-width: 760px) { .topbar { height: 65px; padding: 0 20px; } main { padding: 0 16px; } .intro { padding: 28px 0; } .case-card { display: none; } .workspace { grid-template-columns: 1fr; } .mission-nav { grid-template-columns: repeat(2,1fr); } .mission-step { padding: 14px 12px; } .mission-step:nth-child(2) { border-right: 0; } .mission-step:nth-child(-n+2) { border-bottom: 1px solid var(--line); } .panel-heading { padding: 20px 18px 14px; } .boundary { margin: 0 18px 16px; } .tabs { padding: 0 18px; } .terminal { height: 290px; padding: 12px 17px; } .terminal-meta { padding: 14px 17px; } .terminal-meta span:last-child { display: none; } .environment { font-size: 9px; letter-spacing: 0; } .brand { font-size: 13px; letter-spacing: 1px; } .logo { width: 26px; height: 30px; } .hint-panel { align-items: flex-start; flex-direction: column; padding: 20px; } footer { align-items: flex-start; flex-direction: column; gap: 10px; } .setting-row { align-items: flex-start; flex-direction: column; } .mission-panel { padding: 23px; } }
+@media (max-width: 760px) { .topbar { height: 65px; padding: 0 20px; } main { padding: 0 16px; } .intro { padding: 28px 0; } .case-card { display: none; } .workspace { grid-template-columns: 1fr; } .mission-nav { grid-template-columns: repeat(auto-fit,minmax(155px,1fr)); } .mission-step { padding: 14px 12px; }  .panel-heading { padding: 20px 18px 14px; } .boundary { margin: 0 18px 16px; } .tabs { padding: 0 18px; } .terminal { height: 290px; padding: 12px 17px; } .terminal-meta { padding: 14px 17px; } .terminal-meta span:last-child { display: none; } .environment { font-size: 9px; letter-spacing: 0; } .brand { font-size: 13px; letter-spacing: 1px; } .logo { width: 26px; height: 30px; } .hint-panel { align-items: flex-start; flex-direction: column; padding: 20px; } footer { align-items: flex-start; flex-direction: column; gap: 10px; } .setting-row { align-items: flex-start; flex-direction: column; } .mission-panel { padding: 23px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.save-tools, .next-step { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+.save-tools { color: var(--muted); font-size: 12px; }
+.save-tools button { font-size: 12px; }
+.next-step { padding: 14px 18px; border: 1px solid #3c615c; border-radius: 10px; background: #142722; }
+.next-step p { flex: 1 1 240px; margin: 0; font-size: 13px; }
+.next-step button { max-width: 100%; overflow-wrap: anywhere; }
+#transfer-status:empty { display: none; }
+#progress-file { display: block; width: 100%; max-width: 100%; margin-top: 12px; }
+.notice { white-space: pre-line; }
+button, select, input[type=file] { min-height: 36px; }
+@media (max-width: 760px) { .mission-step { min-width: 0; border-bottom: 1px solid var(--line); } .mission-step strong { overflow-wrap: anywhere; } dialog { width: calc(100% - 24px); padding: 20px; } }

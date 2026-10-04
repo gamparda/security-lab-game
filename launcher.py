@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import queue
+from multiprocessing import AuthenticationError
 from pathlib import Path
 import threading
 import traceback
@@ -58,7 +59,7 @@ def main():
         report({'error': traceback.format_exc()})
         raise
     root.title('Security Lab v' + APP_VERSION)
-    root.geometry('460x290')
+    root.geometry('460x330')
     root.resizable(False, False)
     root.configure(bg='#111b29')
 
@@ -144,7 +145,7 @@ def main():
         try:
             result = instance.reuse(not args.no_browser)
             requests.put(('reused', result))
-        except (OSError, ValueError, KeyError) as error:
+        except (OSError, ValueError, KeyError, TypeError, EOFError, AuthenticationError) as error:
             requests.put(('error', str(error)))
 
     def poll_requests():

@@ -1,6 +1,6 @@
 import { MISSIONS, ORIGINAL_FILES } from './missions.js';
-import { initialState, progress, stage, score, runCommand, answerFeedback, accepted, loginSimulation, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
-import { createSaveSession, CURRENT_SAVE_KEY, SAVE_KEY, exportGame, importGame, MAX_IMPORT_BYTES } from './storage.js';
+import { initialState, missionId, nextAction, progress, stage, score, runCommand, answerFeedback, accepted, loginSimulation, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
+import { createSaveSession, CURRENT_SAVE_KEY, SAVE_KEY, BACKUP_KEY, exportGame, importGame, MAX_IMPORT_BYTES } from './storage.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, text, className) => {
@@ -27,6 +27,7 @@ function renderNotice() {
   $('notice').textContent = [saveNotice, hashRetryNeeded ? hashRetryNotice : ''].filter(Boolean).join('\n');
   $('reload-progress').hidden = session?.blocked !== 'conflict';
   $('save-status').textContent = pendingSaves ? '저장 중…' : saveNotice ? '자동 저장 확인 필요' : '이 브라우저에 자동 저장';
+  try { $('export-original').hidden = !originalSave(); } catch { $('export-original').hidden = true; }
 }
 try {
   storage = window.localStorage;
@@ -53,10 +54,22 @@ window.addEventListener('storage', event => {
   if (session.changed()) { saveNotice = blockedNotices.conflict; renderNotice(); }
 });
 $('reload-progress').addEventListener('click', () => location.reload());
-$('export-progress').addEventListener('click', () => {
-  const address = URL.createObjectURL(new Blob([exportGame(state)], { type: 'application/json' }));
-  const link = el('a'); link.href = address; link.download = 'SecurityLab-progress.json'; link.click();
+function downloadProgress(text, name) {
+  const address = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const link = el('a'); link.href = address; link.download = name; link.click();
   setTimeout(() => URL.revokeObjectURL(address), 1000);
+}
+function originalSave() {
+  if (!storage) return null;
+  return session?.blocked === 'preserved' ? storage.getItem(CURRENT_SAVE_KEY) ?? storage.getItem(SAVE_KEY)
+    : storage.getItem(BACKUP_KEY) ?? storage.getItem(SAVE_KEY);
+}
+$('export-progress').addEventListener('click', () => downloadProgress(exportGame(state), 'SecurityLab-progress.json'));
+$('export-original').addEventListener('click', () => {
+  try {
+    const raw = originalSave();
+    if (raw) downloadProgress(raw, 'SecurityLab-progress-original.json');
+  } catch { $('transfer-status').textContent = '저장 원본을 읽을 수 없습니다. 현재 진행은 내보낼 수 있습니다.'; }
 });
 let importPending = null, importAttempt = 0;
 $('import-progress').addEventListener('click', () => {
@@ -115,25 +128,30 @@ function switchTab(name) {
     $('panel-' + tab.dataset.tab).hidden = !selected;
   }
 }
-const clueNames = { help: '게임 명령 사용법', approval: '승인된 조사 범위', scan: '서비스 포트 목록', 'port-443': '자료 서비스 운영 조건', 'port-8080': '관리 서비스가 불필요함', rescan: '방어 후 포트 재조회', login: '더미 후보와 시도 기록', baseline: '승인된 오프라인 기준', hash: 'SHA-256 비교 결과', mismatch: 'budget.csv 변경 감지' };
 function render() {
   const focused = document.activeElement;
+  $('command').disabled = busy; $('command-form').querySelector('button').disabled = busy;
+  $('import-progress').disabled = busy;
+  $('mission-count').textContent = MISSIONS.filter(m => m.id !== 'tutorial').length;
+  const action = nextAction(state);
+  $('next-action').textContent = action.text;
+  $('follow-action').textContent = action.label; $('follow-action').disabled = busy;
   const m = MISSIONS[state.active], p = progress(state);
   $('mission-nav').replaceChildren(...MISSIONS.map((mission, i) => {
-    const item = el('div', undefined, `mission-step ${i === state.active ? 'active' : ''} ${state.missions[i].verified ? 'complete' : ''}`);
+    const item = el('li', undefined, `mission-step ${i === state.active ? 'active' : ''} ${state.missions[i].verified ? 'complete' : ''}`);
     item.append(el('span', state.missions[i].verified ? '✓' : String(i).padStart(2, '0')), el('strong', mission.title), el('small', state.missions[i].verified ? '검증 완료' : i === state.active ? '진행 중' : '대기'));
     if (i === state.active) item.setAttribute('aria-current', 'step');
     return item;
   }));
-  $('mission-number').textContent = `${state.active === 0 ? 'TUTORIAL' : 'MISSION 0' + state.active} / ${m.duration}`;
+  $('mission-number').textContent = `${missionId(state) === 'tutorial' ? 'TUTORIAL' : 'MISSION 0' + state.active} / ${m.duration}`;
   $('mission-title').textContent = m.title;
   $('mission-subtitle').textContent = m.subtitle;
   $('boundary').textContent = m.boundary;
   $('objective').textContent = m.objective;
   $('stage').textContent = stage(state);
   $('score').textContent = score(state) + ' / 100';
-  $('clues').replaceChildren(...(p.clues.length ? p.clues.map(key => el('li', '✓ ' + clueNames[key])) : [el('li', '아직 확보한 단서가 없습니다.', 'muted')]));
-  $('answer-label').textContent = state.active === 0 ? '허용된 조사 범위 선택' : '근거에 맞는 원인 설명 선택';
+  $('clues').replaceChildren(...(p.clues.length ? p.clues.map(key => el('li', '✓ ' + m.clues[key].label)) : [el('li', '아직 확보한 단서가 없습니다.', 'muted')]));
+  $('answer-label').textContent = missionId(state) === 'tutorial' ? '허용된 조사 범위 선택' : '근거에 맞는 원인 설명 선택';
   $('answers').replaceChildren($('answer-label'), ...m.answers.map((answer, i) => {
     const label = el('label');
     const radio = el('input');
@@ -147,18 +165,18 @@ function render() {
   $('answer-feedback').hidden = !feedback;
   $('answer-feedback').textContent = feedback?.text ?? '';
   $('answer-feedback').className = 'answer-feedback ' + (feedback?.status === 'supported' ? 'success' : 'warning');
-  $('hint').textContent = `힌트 보기 (${p.hint}/3)`;
+  $('hint').textContent = `힌트 보기 (${p.hint}/${m.hints.length})`;
   $('hint-copy').textContent = p.hint ? m.hints[p.hint - 1] : '개념 → 확인할 위치 → 다음 행동 순서로 안내합니다.';
-  $('next').hidden = !p.verified || state.active === 3;
+  $('next').hidden = !p.verified || state.active === MISSIONS.length - 1;
   $('verify').disabled = busy;
   $('next').disabled = busy;
-  $('hint').disabled = busy || p.hint === 3;
+  $('hint').disabled = busy || p.hint === m.hints.length;
   $('reset-mission').disabled = busy;
   $('reset-all').disabled = busy;
   renderSettings(); renderFiles(); renderComparison(); renderResults();
-  const commands = [ ['help', 'inspect approval', 'verify'], ['scan club-server', 'inspect club-server 443', 'inspect club-server 8080', 'verify'], ['inspect login', 'verify'], ['inspect baseline', 'hash files', 'verify'] ][state.active];
+  const commands = m.quickCommands;
   $('quick-commands').replaceChildren(...commands.map(command => {
-    const button = el('button', command); button.disabled = busy;
+    const button = el('button', command); button.id = 'quick-' + m.id + '-' + command.replaceAll(' ', '-'); button.disabled = busy;
     button.addEventListener('click', () => execute(command)); return button;
   }));
   if (!focused.isConnected && focused.id) {
@@ -168,7 +186,7 @@ function render() {
 }
 function renderSettings() {
   const container = $('settings'); container.replaceChildren();
-  if (state.active === 1) {
+  if (missionId(state) === 'services') {
     container.append(el('h3', '가상 방화벽 정책'), el('p', '자료 서비스(443)를 유지하면서 불필요한 관리 접근만 제한하세요. 설정 변경 후 다시 scan하고 재검증하세요.', 'muted'));
     for (const port of [443, 8080]) {
       const row = el('div', undefined, 'setting-row');
@@ -180,7 +198,7 @@ function renderSettings() {
       row.append(label, select); container.append(row);
     }
     container.append(el('p', '이 설정은 실제 방화벽을 변경하지 않습니다.', 'muted'));
-  } else if (state.active === 2) {
+  } else if (missionId(state) === 'login') {
     container.append(el('h3', '더미 로그인 정책'), el('p', '후보는 내장된 가상 값입니다. 실제 계정이나 비밀번호는 입력하지 마세요.', 'muted'));
     const row = el('div', undefined, 'setting-row');
     const label = el('label', '최소 비밀번호 길이'); label.htmlFor = 'min-length';
@@ -196,7 +214,7 @@ function renderSettings() {
       row.append(input, el('span', title)); container.append(row);
     }
     container.append(el('p', '숫자·기호의 혼합을 일률적으로 강제하지 않습니다. 시도 제한 수치는 이 게임의 예시이며 실제 서비스에서는 위험에 맞게 설계합니다.', 'muted'));
-  } else if (state.active === 3) {
+  } else if (missionId(state) === 'integrity') {
     const ready = canRestoreFiles(state);
     const restoredBeforeInvestigation = state.files['budget.csv'] === ORIGINAL_FILES['budget.csv'] && !progress(state).clues.includes('mismatch');
     const guidance = el('p', restoredBeforeInvestigation
@@ -224,7 +242,7 @@ function renderSettings() {
 }
 function renderFiles() {
   $('files').replaceChildren();
-  if (state.active !== 3) { $('files').append(el('p', '미션 3에서 내장 파일의 SHA-256을 비교합니다.', 'muted')); return; }
+  if (missionId(state) !== 'integrity') { $('files').append(el('p', '자료 무결성 미션에서 내장 파일의 SHA-256을 비교합니다.', 'muted')); return; }
   if (!progress(state).hashes.length) { $('files').append(el('p', '아직 계산 결과가 없습니다. 터미널에서 hash files를 실행하세요.')); return; }
   for (const row of progress(state).hashes) {
     const card = el('article', undefined, 'file-card');
@@ -235,25 +253,25 @@ function renderFiles() {
 function renderComparison() {
   const container = $('comparison'), p = progress(state), observations = p.observations;
   container.replaceChildren();
-  if (state.active === 0) { container.append(el('p', '다음 미션부터 조사한 결과와 방어 이후의 변화를 비교합니다.', 'muted')); return; }
-  const after = state.active === 3 && p.hashPending ? null : observations.after;
-  const guidance = [null, 'scan club-server로 접근 상태를 조사하세요. 설정을 바꾼 뒤 다시 scan하고 자료 서비스도 재검증하세요.', 'inspect login으로 후보와 시도 기록을 조사하세요. 정책을 바꾼 뒤 다시 inspect login하거나 현재 상태를 재검증하세요.', 'hash files의 실제 계산 결과를 기록합니다. 복구 후에는 해시를 다시 계산해야 비교할 수 있습니다.'][state.active];
+  if (missionId(state) === 'tutorial') { container.append(el('p', '다음 미션부터 조사한 결과와 방어 이후의 변화를 비교합니다.', 'muted')); return; }
+  const after = missionId(state) === 'integrity' && p.hashPending ? null : observations.after;
+  const guidance = MISSIONS[state.active].comparisonGuidance;
   container.append(el('h3', '방어 전후 관찰 기록'), el('p', guidance, 'muted'));
   const status = el('p', p.verified ? '방어와 정상 기능의 재검증을 모두 통과했습니다.' : '관찰 결과와 미션 완료는 별도로 확인합니다. 원인 설명과 현재 상태 재검증을 마치세요.', 'muted');
   status.id = 'comparison-status'; container.append(status);
   let labels;
   function values(snapshot) {
     if (!snapshot) return null;
-    if (state.active === 1) return [snapshot[443] ? '접근 허용 · 정상' : '접근 차단 · 열람 불가', snapshot[8080] ? '접근 허용' : '접근 차단'];
-    if (state.active === 2) {
+    if (missionId(state) === 'services') return [snapshot[443] ? '접근 허용 · 정상' : '접근 차단 · 열람 불가', snapshot[8080] ? '접근 허용' : '접근 차단'];
+    if (missionId(state) === 'login') {
       const result = loginSimulation(snapshot);
       return [snapshot.minLength + '자', snapshot.blockCommon ? '적용' : '미적용', accepted('school-club-password', snapshot) ? '허용' : '거부', result.attempts[3].result, result.normal ? '성공' : '실패'];
     }
     return Object.keys(ORIGINAL_FILES).map(name => snapshot.matches[name] ? '일치' : '변경 감지');
   }
-  if (state.active === 1) labels = ['443 자료 서비스', '8080 관리 서비스'];
-  if (state.active === 2) labels = ['최소 길이', '흔한 값 차단 목록', '긴 흔한 후보: school-club-password', '반복 실패 4회차', '정상 사용자 첫 로그인'];
-  if (state.active === 3) labels = Object.keys(ORIGINAL_FILES);
+  if (missionId(state) === 'services') labels = ['443 자료 서비스', '8080 관리 서비스'];
+  if (missionId(state) === 'login') labels = ['최소 길이', '흔한 값 차단 목록', '긴 흔한 후보: school-club-password', '반복 실패 4회차', '정상 사용자 첫 로그인'];
+  if (missionId(state) === 'integrity') labels = Object.keys(ORIGINAL_FILES);
   const beforeValues = values(observations.before), afterValues = values(after);
   const table = el('table');
   const caption = el('caption', '조사 당시 기록 비교'); table.append(caption);
@@ -268,14 +286,14 @@ function renderComparison() {
   });
   table.append(body); container.append(table);
   if (!observations.before) container.append(el('p', '설정을 바꾸기 전에 조사하면 방어 전 기록도 남습니다.', 'muted'));
-  if (state.active === 3) container.append(el('p', '해시 불일치는 변경을 뜻합니다. 악성 여부나 작성자의 신원을 판정하지 않습니다.', 'muted'));
+  if (missionId(state) === 'integrity') container.append(el('p', '해시 불일치는 변경을 뜻합니다. 악성 여부나 작성자의 신원을 판정하지 않습니다.', 'muted'));
 }
 function renderResults() {
   $('results').hidden = !state.missions.every(p => p.verified);
   if ($('results').hidden) return;
   $('result-list').replaceChildren(...MISSIONS.map((m, i) => {
     const card = el('article');
-    card.append(el('h3', `${m.title} · ${score(state, i)}/100`), el('p', m.explanation), el('p', `사용한 힌트: ${state.missions[i].hint}/3 단계`, 'muted'));
+    card.append(el('h3', `${m.title} · ${score(state, i)}/100`), el('p', m.explanation), el('p', `사용한 힌트: ${state.missions[i].hint}/${m.hints.length} 단계`, 'muted'));
     return card;
   }));
 }
@@ -292,6 +310,17 @@ async function execute(input) {
   catch (error) { log('처리 안내: ' + error.message); }
   finally { busy = false; $('command').disabled = false; $('command-form').querySelector('button').disabled = false; render(); $('command').focus(); }
 }
+$('follow-action').addEventListener('click', () => {
+  if (busy) return;
+  const action = nextAction(state);
+  if (action.command) { execute(action.command); return; }
+  if (action.tab) {
+    switchTab(action.tab);
+    const panel = $('panel-' + action.tab);
+    panel.scrollIntoView({ block: 'center' });
+    (panel.querySelector('button:not(:disabled),select:not(:disabled),input:not(:disabled)') ?? $('tab-' + action.tab)).focus();
+  } else if (action.focus) { $(action.focus).scrollIntoView({ block: 'center' }); $(action.focus).focus(); }
+});
 $('command-form').addEventListener('submit', event => { event.preventDefault(); const input = $('command').value; $('command').value = ''; execute(input); });
 $('verify').addEventListener('click', () => execute('verify'));
 $('next').addEventListener('click', () => {

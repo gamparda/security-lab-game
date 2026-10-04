@@ -6,6 +6,7 @@ $exe = Join-Path $isolated ('SecurityLab-v' + $expectedVersion + '-Windows-x64.e
 Copy-Item (Resolve-Path 'dist/SecurityLab.exe') $exe
 $first = $null
 $second = $null
+$conflict = $null
 $originalGameUrl = $env:GAME_URL
 $stateDir = Join-Path $isolated 'settings'
 New-Item -ItemType Directory -Force $stateDir | Out-Null
@@ -50,16 +51,37 @@ try {
   if ($other.url -ne $startup.url -or -not $other.reused -or $other.pid -ne $startup.pid) { throw 'Second launcher did not reuse the owned instance' }
   if (-not $second.WaitForExit(10000)) { throw 'Second launcher did not exit after reuse' }
   $second = $null
+  $conflictDiagnostic = Join-Path $isolated 'conflict-startup.json'
+  $versionProbe = (Resolve-Path 'tests/windows_version_probe.py').Path
+  $conflict = Start-Process -FilePath (Get-Command python).Source -WorkingDirectory $isolated -ArgumentList @("`"$versionProbe`"", '--diagnostics', "`"$conflictDiagnostic`"", '--no-browser', '--state-dir', "`"$stateDir`"") -PassThru
+  $deadline = (Get-Date).AddSeconds(20)
+  $blocked = $null
+  while ((Get-Date) -lt $deadline) {
+    if (Test-Path $conflictDiagnostic) {
+      try { $blocked = Get-Content $conflictDiagnostic -Raw | ConvertFrom-Json } catch { Start-Sleep -Milliseconds 200; continue }
+      break
+    }
+    Start-Sleep -Milliseconds 200
+  }
+  if ($null -eq $blocked -or $blocked.error -notlike '*종료*' -or $blocked.PSObject.Properties.Name -contains 'url') { throw 'Different launcher version was not blocked' }
+  taskkill /PID $conflict.Id /T /F | Out-Null
+  $conflict = $null
   $env:GAME_URL = $startup.url
   npm run test:e2e
   if ($LASTEXITCODE -ne 0) { throw 'Standalone launcher browser tests failed' }
   $savedPort = (Get-Content (Join-Path $stateDir 'settings.json') -Raw | ConvertFrom-Json).port
   if ($startup.url -ne ('http://localhost:' + $savedPort)) { throw 'Last port was not retained' }
-  Write-Output 'Standalone EXE assets, single instance, foreign port fallback, saved port, and browser game verified.'
+  taskkill /PID $first.Id /T /F | Out-Null
+  $first = $null
+  $restartDiagnostic = Join-Path $isolated 'restart-startup.json'
+  $first = Start-IsolatedGame $restartDiagnostic
+  $restarted = Wait-ForGame $restartDiagnostic
+  if ($restarted.url -ne $startup.url -or $restarted.portChanged -or $restarted.reused) { throw 'Restart did not retain its original game address' }
+  Write-Output 'Standalone EXE assets, single instance, version conflict, foreign port fallback, restart address, and browser game verified.'
 } finally {
   $blocker.Stop()
   $env:GAME_URL = $originalGameUrl
-  foreach ($process in @($second, $first)) {
+  foreach ($process in @($conflict, $second, $first)) {
     if ($null -ne $process) { taskkill /PID $process.Id /T /F | Out-Null }
   }
   Remove-Item $isolated -Recurse -Force -ErrorAction SilentlyContinue

@@ -88,12 +88,13 @@
     <main>
       <section class="intro">
         <div><p class="eyebrow">학교 동아리 보안 조사 / CASE 001</p><h1>단서를 찾고,<br>안전하게 복구하세요.</h1><p class="intro-copy">동아리 자료 서버에서 이상 징후가 발견됐습니다.<br>조사부터 방어, 재검증까지 직접 경험하세요.</p></div>
-        <div class="case-card"><span>YOUR ROLE</span><strong>승인된 조사 담당자</strong><p>가상 서버 1개 · 필수 미션 3개<br>실제 개인정보 없이 진행</p><span class="case-id">CLUB-SERVER / INTERNAL</span></div>
+        <div class="case-card"><span>YOUR ROLE</span><strong>승인된 조사 담당자</strong><p>가상 서버 1개 · 필수 미션 <span id="mission-count">3</span>개<br>실제 개인정보 없이 진행</p><span class="case-id">CLUB-SERVER / INTERNAL</span></div>
       </section>
-      <nav id="mission-nav" class="mission-nav" aria-label="미션 진행"></nav>
+      <nav aria-label="미션 진행"><ol id="mission-nav" class="mission-nav"></ol></nav>
       <p id="notice" class="notice" role="status"></p>
-      <div class="save-tools"><span id="save-status"></span><button id="export-progress">진행 내보내기</button><button id="import-progress">진행 가져오기</button><button id="reload-progress" hidden>최신 진행 불러오기</button></div>
+      <div class="save-tools"><span id="save-status"></span><button id="export-progress">진행 내보내기</button><button id="import-progress">진행 가져오기</button><button id="export-original" hidden>저장 원본 내보내기</button><button id="reload-progress" hidden>최신 진행 불러오기</button></div>
       <p id="transfer-status" role="status"></p>
+      <section class="next-step" aria-label="다음 행동"><p id="next-action" role="status"></p><button id="follow-action"></button></section>
       <div class="workspace">
         <section class="lab-panel" aria-labelledby="mission-title">
           <div class="panel-heading"><div><p id="mission-number" class="eyebrow"></p><h2 id="mission-title"></h2><p id="mission-subtitle"></p></div><span id="stage" class="badge"></span></div>
@@ -104,15 +105,15 @@
             <button id="tab-files" role="tab" aria-selected="false" aria-controls="panel-files" data-tab="files" tabindex="-1">파일 비교</button>
             <button id="tab-comparison" role="tab" aria-selected="false" aria-controls="panel-comparison" data-tab="comparison" tabindex="-1">전후 비교</button>
           </div>
-          <div id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal">
+          <div id="panel-terminal" role="tabpanel" tabindex="0" aria-labelledby="tab-terminal">
             <div class="terminal-meta"><span>club-server : sandbox</span><span>GAME COMMANDS ONLY</span></div>
             <div id="terminal" class="terminal" role="log" aria-live="polite" aria-label="명령 실행 기록"></div>
             <form id="command-form"><label for="command" class="prompt">❯ <span class="sr-only">게임 명령어</span></label><input id="command" name="command" placeholder="help를 입력해 시작하세요" autocomplete="off" spellcheck="false" maxlength="200"><button type="submit">실행 ↵</button></form>
             <div id="quick-commands" class="quick-commands"></div>
           </div>
-          <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden><div id="settings" class="settings"></div></div>
-          <div id="panel-files" role="tabpanel" aria-labelledby="tab-files" hidden><div id="files" class="files"></div></div>
-          <div id="panel-comparison" role="tabpanel" aria-labelledby="tab-comparison" hidden><div id="comparison" class="comparison"></div></div>
+          <div id="panel-settings" role="tabpanel" tabindex="0" aria-labelledby="tab-settings" hidden><div id="settings" class="settings"></div></div>
+          <div id="panel-files" role="tabpanel" tabindex="0" aria-labelledby="tab-files" hidden><div id="files" class="files"></div></div>
+          <div id="panel-comparison" role="tabpanel" tabindex="0" aria-labelledby="tab-comparison" hidden><div id="comparison" class="comparison"></div></div>
         </section>
         <aside class="mission-panel">
           <p class="eyebrow">MISSION BRIEF</p><h2>조사 노트</h2><p id="objective"></p>
@@ -125,11 +126,11 @@
         </aside>
       </div>
       <section class="hint-panel"><div><p class="eyebrow">NEED A CLUE?</p><h2>막히면 힌트를 확인하세요.</h2><p id="hint-copy">개념 → 확인할 위치 → 다음 행동 순서로 안내합니다.</p></div><button id="hint">힌트 보기 (0/3)</button></section>
-      <section id="results" class="results" hidden><p class="eyebrow">CASE CLOSED</p><h2>조사를 완료했습니다.</h2><p>원인과 대응, 정상 기능 유지 여부를 함께 검증했습니다.</p><div id="result-list"></div></section>
+      <section id="results" class="results" tabindex="-1" hidden><p class="eyebrow">CASE CLOSED</p><h2>조사를 완료했습니다.</h2><p>원인과 대응, 정상 기능 유지 여부를 함께 검증했습니다.</p><div id="result-list"></div></section>
       <footer><span>포트·로그인: 시뮬레이션 / SHA-256: 실제 연산</span><div><button id="reset-mission">현재 미션 초기화</button><button id="reset-all">전체 초기화</button></div></footer>
     </main>
-    <dialog id="import-dialog"><form method="dialog"><h2>진행 가져오기</h2><p>Security Lab에서 내보낸 진행 JSON을 선택하세요. 현재 저장을 백업한 뒤 교체합니다.</p><label for="progress-file">게임 진행 파일 · 최대 128KiB</label><input id="progress-file" type="file" accept=".json,application/json"><p id="import-message" role="status"></p><div class="dialog-actions"><button value="cancel">취소</button><button id="confirm-import" class="primary" value="confirm" disabled>가져오기</button></div></form></dialog>
-    <dialog id="reset-dialog"><form method="dialog"><h2 id="reset-title">진행을 초기화할까요?</h2><p id="reset-description"></p><div class="dialog-actions"><button value="cancel">취소</button><button class="primary" value="confirm">초기화</button></div></form></dialog>
+    <dialog id="import-dialog" aria-labelledby="import-title"><form method="dialog"><h2 id="import-title">진행 가져오기</h2><p>Security Lab에서 내보낸 진행 JSON을 선택하세요. 현재 저장을 백업한 뒤 교체합니다.</p><label for="progress-file">게임 진행 파일 · 최대 128KiB</label><input id="progress-file" type="file" accept=".json,application/json"><p id="import-message" role="status"></p><div class="dialog-actions"><button value="cancel">취소</button><button id="confirm-import" class="primary" value="confirm" disabled>가져오기</button></div></form></dialog>
+    <dialog id="reset-dialog" aria-labelledby="reset-title"><form method="dialog"><h2 id="reset-title">진행을 초기화할까요?</h2><p id="reset-description"></p><div class="dialog-actions"><button value="cancel">취소</button><button class="primary" value="confirm">초기화</button></div></form></dialog>
     </div>
   </body>
 </html>
