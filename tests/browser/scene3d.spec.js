@@ -58,10 +58,48 @@ async function openMainDoor(page) {
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors[0].angle).toBeCloseTo(100*Math.PI/180,2);
 }
-async function walkUntil(page,key,predicate,timeout=16000) {
+async function walkUntil(page,key,condition,timeout=16000) {
+  // Arm the stop before sending the real keydown. Release through the normal
+  // keyup handler in the frame that reaches the waypoint, so slow automation
+  // transport cannot carry the player past a doorway or interaction target.
+  await page.evaluate(async({key,condition,timeout})=>{
+    const {get3DDiagnostics}=await import('/src/scene3d.js');
+    const state=window.__labWalk={done:false,error:null};
+    let startSeconds=0,timer;
+    const finish=error=>{
+      if(state.done) return;
+      state.done=true; state.error=error??null; clearTimeout(timer);
+      document.removeEventListener('keydown',begin);
+      document.dispatchEvent(new KeyboardEvent('keyup',{code:key,bubbles:true}));
+    };
+    const check=()=>{
+      if(state.done) return;
+      const d=get3DDiagnostics();
+      if(!d.pointerLocked) return finish('Pointer lock was lost while walking');
+      const value=d.position[condition.axis==='x'?0:2];
+      const reached=condition.target!==undefined ? d.target===condition.target
+        : condition.seconds!==undefined ? d.movementSeconds-startSeconds>=condition.seconds
+        : condition.lt!==undefined ? value<condition.lt : value>condition.gt;
+      if(reached) finish(); else requestAnimationFrame(check);
+    };
+    const begin=event=>{
+      if(event.code!==key || event.repeat) return;
+      document.removeEventListener('keydown',begin);
+      startSeconds=get3DDiagnostics().movementSeconds;
+      timer=setTimeout(()=>finish('Walking did not reach its physical target'),timeout);
+      check();
+    };
+    state.cancel=()=>finish('Walking cancelled');
+    document.addEventListener('keydown',begin);
+  },{key,condition,timeout});
   await page.keyboard.down(key);
-  try { await expect.poll(async()=>predicate(await diagnostics(page)),{timeout,intervals:[40,70,100]}).toBe(true); }
-  finally { await page.keyboard.up(key); }
+  try {
+    await expect.poll(()=>page.evaluate(()=>window.__labWalk.done),{timeout:timeout+5000,intervals:[40,70,100]}).toBe(true);
+    expect(await page.evaluate(()=>window.__labWalk.error)).toBeNull();
+  } finally {
+    await page.evaluate(()=>{window.__labWalk?.cancel(); delete window.__labWalk;});
+    await page.keyboard.up(key);
+  }
 }
 async function aim(page,x,y,z) {
   // PointerLockControls is exercised through mouse movement events, never by
@@ -88,7 +126,7 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
   expect(initial.position[1]).toBe(1.65); expect(initial.colliders).toBeGreaterThan(25);
   // A 0.1 s frame can stop at 10.27 m: assert the collision boundary and
   // continued inability to cross, not one particular movement quantization.
-  await walkUntil(page,'KeyW',d=>d.position[2]<10.32);
+  await walkUntil(page,'KeyW',{axis:'z',lt:10.32});
   const atClosedDoor=(await diagnostics(page)).position[2];
   expect(atClosedDoor).toBeGreaterThanOrEqual(10.2);
   await page.keyboard.down('KeyW'); await page.waitForTimeout(350); await page.keyboard.up('KeyW');
@@ -101,15 +139,16 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors[0].angle).toBeCloseTo(100*Math.PI/180,2);
   expect((await diagnostics(page)).doors[0].pivot[0]).toBeCloseTo(-.64,2);
-  await walkUntil(page,'KeyW',d=>d.position[2]<6.5);
+  await walkUntil(page,'KeyW',{axis:'z',lt:6.5});
   const walking=await diagnostics(page);
   // Walk back toward the open entrance before sprinting forward, leaving
   // enough unobstructed corridor for delayed input delivery on CI.
-  await page.keyboard.down('KeyS'); await page.waitForTimeout(400); await page.keyboard.up('KeyS');
+  await walkUntil(page,'KeyS',{seconds:.4});
   const sprinting=await diagnostics(page);
   const walkSpeed=(sprinting.position[2]-walking.position[2])/(sprinting.movementSeconds-walking.movementSeconds);
-  await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW'); await page.waitForTimeout(400);
-  await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
+  await page.keyboard.down('ShiftLeft');
+  try { await walkUntil(page,'KeyW',{seconds:.4}); }
+  finally { await page.keyboard.up('ShiftLeft'); }
   const afterSprint=await diagnostics(page);
   // Compare actual distance per simulated second, since software rendering and
   // automation latency can make equal wall-clock key pulses unequal in-game.
@@ -142,12 +181,12 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   test.setTimeout(120000);
   await start(page); await openMainDoor(page);
   await capture(page,'02-door-open.png');
-  await walkUntil(page,'KeyW',d=>d.position[2]<6);
+  await walkUntil(page,'KeyW',{axis:'z',lt:6});
   await aim(page,-3,1.5,0); await capture(page,'01-lab-overview.png');
   // Main operations PC: approach along its southern aisle, aiming at the screen.
-  await aim(page,-5,1.65,6); await walkUntil(page,'KeyW',d=>d.position[0]<-4.85);
+  await aim(page,-5,1.65,6); await walkUntil(page,'KeyW',{axis:'x',lt:-4.85});
   await aim(page,-5.2,1.25,2.85);
-  await walkUntil(page,'KeyW',d=>d.target==='INTERACT_AdminPC');
+  await walkUntil(page,'KeyW',{target:'INTERACT_AdminPC'});
   await page.keyboard.press('KeyE');
   await expect(page.locator('#panel-terminal')).toBeVisible();
   await page.locator('#command').fill('help'); await page.locator('#command').press('Enter');
@@ -159,14 +198,14 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
   await closeAndResume(page);
   // Back to the central aisle, then up to the server-room door.
-  await aim(page,0,1.65,6); await walkUntil(page,'KeyW',d=>d.position[0]>-.12);
-  await aim(page,0,1.65,-.8); await walkUntil(page,'KeyW',d=>d.position[2]<.1);
-  await aim(page,-5.3,1.65,.1); await walkUntil(page,'KeyW',d=>d.position[0]<-5.1);
+  await aim(page,0,1.65,6); await walkUntil(page,'KeyW',{axis:'x',gt:-.12});
+  await aim(page,0,1.65,-.8); await walkUntil(page,'KeyW',{axis:'z',lt:.1});
+  await aim(page,-5.3,1.65,.1); await walkUntil(page,'KeyW',{axis:'x',lt:-5.1});
   await aim(page,-5.3,1.45,-2);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_ServerRoom');
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors.find(d=>d.name==='DOOR_ServerRoom').angle).toBeCloseTo(95*Math.PI/180,2);
-  await aim(page,-5.3,1.65,-3.0); await walkUntil(page,'KeyW',d=>d.position[2]<-3.0);
+  await aim(page,-5.3,1.65,-3.0); await walkUntil(page,'KeyW',{axis:'z',lt:-3.0});
   await aim(page,-7.1,1.3,-4.55);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_ServerRack');
   await capture(page,'03-server-rack.png');
@@ -178,31 +217,31 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   expect(JSON.parse(save).game.active).toBe('services');
   await closeAndResume(page);
   // Leave the server suite through the same physical doorway, then the whiteboard.
-  await aim(page,-5.3,1.65,0); await walkUntil(page,'KeyW',d=>d.position[2]>0);
-  await aim(page,0,1.65,0); await walkUntil(page,'KeyW',d=>d.position[0]>-.1);
+  await aim(page,-5.3,1.65,0); await walkUntil(page,'KeyW',{axis:'z',gt:0});
+  await aim(page,0,1.65,0); await walkUntil(page,'KeyW',{axis:'x',gt:-.1});
   await aim(page,2,1.7,-.82);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_Whiteboard');
   await page.keyboard.press('KeyE'); await expect(page.locator('#tool-source')).toContainText('화이트보드');
   await expect(page.locator('#hint')).toHaveText('힌트 보기 (0/3)');
   await closeAndResume(page);
   // Network bench along its clear southern approach.
-  await aim(page,0,1.65,3.8); await walkUntil(page,'KeyW',d=>d.position[2]>3.5);
-  await aim(page,7,1.65,3.8); await walkUntil(page,'KeyW',d=>d.position[0]>6.85);
+  await aim(page,0,1.65,3.8); await walkUntil(page,'KeyW',{axis:'z',gt:3.5});
+  await aim(page,7,1.65,3.8); await walkUntil(page,'KeyW',{axis:'x',gt:6.85});
   await aim(page,7,1.06,1.65);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_Router');
   await page.keyboard.press('KeyE'); await expect(page.locator('#panel-settings')).toBeVisible();
   await expect(page.locator('#port-8080')).toHaveValue('allow');
   await closeAndResume(page);
   // The records room has its own actual door, independent of the server suite.
-  await aim(page,5.3,1.65,3.8); await walkUntil(page,'KeyW',d=>d.position[0]<5.4);
-  await aim(page,5.3,1.65,0); await walkUntil(page,'KeyW',d=>d.position[2]<.1);
+  await aim(page,5.3,1.65,3.8); await walkUntil(page,'KeyW',{axis:'x',lt:5.4});
+  await aim(page,5.3,1.65,0); await walkUntil(page,'KeyW',{axis:'z',lt:.1});
   await aim(page,5.3,1.45,-2);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_RecordsRoom');
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors.find(d=>d.name==='DOOR_RecordsRoom').angle).toBeCloseTo(95*Math.PI/180,2);
-  await aim(page,5.3,1.65,-5.9); await walkUntil(page,'KeyW',d=>d.position[2]<-5.8);
+  await aim(page,5.3,1.65,-5.9); await walkUntil(page,'KeyW',{axis:'z',lt:-5.8});
   await aim(page,7.4,1.2,-7.45);
-  await walkUntil(page,'KeyW',d=>d.target==='INTERACT_FileCabinet');
+  await walkUntil(page,'KeyW',{target:'INTERACT_FileCabinet'});
   await page.keyboard.press('KeyE'); await expect(page.locator('#panel-files')).toBeVisible();
   await expect(page.locator('#tool-source')).toContainText('자료 보관함');
   await closeAndResume(page);
@@ -215,12 +254,12 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
 test('door closing stops for a player in its sweep, then closes when clear',async({page},testInfo)=>{
   test.skip(!main3D(testInfo));
   await start(page); await openMainDoor(page);
-  await walkUntil(page,'KeyW',d=>d.position[2]<9.88);
+  await walkUntil(page,'KeyW',{axis:'z',lt:9.88});
   await aim(page,-.72,1.4,9.4);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_Main');
   await page.keyboard.press('KeyE'); await page.waitForTimeout(650);
   expect((await diagnostics(page)).doors[0].angle).toBeGreaterThan(.2);
-  await aim(page,0,1.65,8.2); await walkUntil(page,'KeyW',d=>d.position[2]<8.35);
+  await aim(page,0,1.65,8.2); await walkUntil(page,'KeyW',{axis:'z',lt:8.35});
   await aim(page,-.83,1.4,8.8);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_Main');
   await page.keyboard.press('KeyE');
@@ -517,7 +556,7 @@ test('@windows-edge door opening and WASD move through the physical doorway',asy
   test.skip(!desktop3D(testInfo));
   await start(page); await openMainDoor(page);
   const initial=(await diagnostics(page)).position;
-  await walkUntil(page,'KeyW',d=>d.position[2]<9.7);
+  await walkUntil(page,'KeyW',{axis:'z',lt:9.7});
   const through=(await diagnostics(page)).position;
   expect(initial[2]-through[2]).toBeGreaterThan(1);
   await page.keyboard.press('Escape'); await expect(page.locator('#scene-cover')).toBeVisible();
