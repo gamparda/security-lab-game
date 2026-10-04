@@ -100,6 +100,9 @@ try {
   taskkill /PID $conflict.Id /T /F | Out-Null
   $conflict = $null
   $env:GAME_URL = $startup.url
+  # Fail early if the runner's graphics backend cannot display the bundled GLB.
+  npm run test:e2e -- --project=desktop --grep 'packaged 3D model displays an actual first frame'
+  if ($LASTEXITCODE -ne 0) { throw 'Standalone launcher 3D graphics preflight failed' }
   npm run test:e2e -- --project=desktop --project=mobile
   if ($LASTEXITCODE -ne 0) { throw 'Standalone launcher browser tests failed' }
   # windows-latest includes Microsoft Edge; fail if that supported native browser is unavailable.
