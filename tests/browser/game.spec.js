@@ -36,7 +36,7 @@ test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용�
   for (let attempt = 0; attempt < 3; attempt++) {
     const stylesheet = page.waitForResponse(response => new URL(response.url()).pathname === '/src/style.css');
     if (attempt === 0) await page.goto('/');
-    else await page.reload();
+    else await reloadGame(page);
     const response = await stylesheet;
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toMatch(/^text\/css\b/);
@@ -109,7 +109,7 @@ test('첫 CSS 요청 실패는 한 번 자동 재시도하고 저장된 진행�
   const saved = await seedGame(page, await missionState(1));
   let requests = 0;
   await page.route('**/src/style.css*', route => ++requests === 1 ? route.abort() : route.continue());
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#game')).toBeVisible();
   await expect(page.locator('#loading-screen')).toBeHidden();
   await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
@@ -121,7 +121,7 @@ test('CSS 재시도도 실패하면 게임을 숨기고 수동 재시도로 진�
   const saved = await seedGame(page, await missionState(1));
   let requests = 0;
   await page.route('**/src/style.css*', route => { requests++; return route.abort(); });
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#loading-message')).toContainText('화면을 불러오지 못했습니다');
   await expect(page.locator('#game')).toBeHidden();
   await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
@@ -186,7 +186,7 @@ test('게임 모듈이 느리면 초기화와 진행 복원 완료까지 기다�
 test('의존 모듈 로딩 실패는 재시도 안내를 표시하고 진행을 삭제하지 않음', async ({ page }) => {
   const saved = await seedGame(page, await missionState(2));
   await page.route('**/src/engine.js', route => route.abort());
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#loading-message')).toContainText('게임을 준비하지 못했습니다');
   await expect(page.locator('#game')).toBeHidden();
   await expect(page.locator('#loading-retry')).toBeVisible();
@@ -201,7 +201,7 @@ test('첫 게임 모듈 요청 실패는 페이지를 한 번 다시 열어 진�
   const saved = await seedGame(page, await missionState(2));
   let requests = 0;
   await page.route('**/src/engine.js', route => ++requests === 1 ? route.abort() : route.continue());
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#game')).toBeVisible();
   await expect(page.locator('#mission-title')).toHaveText('약한 로그인 정책');
   expect(requests).toBe(2);
@@ -254,12 +254,16 @@ async function missionState(index, completed = false) {
   }
   return state;
 }
+async function reloadGame(page) {
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  await page.reload();
+}
 async function seedGame(page, state) {
   let saved;
   saveGame(state, { setItem: (_key, value) => { saved = value; } });
   await page.goto('/');
   await page.evaluate(({ key, value, current }) => { localStorage.removeItem(current); localStorage.setItem(key, value); }, { current: CURRENT_SAVE_KEY, key: SAVE_KEY, value: saved });
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#mission-title')).toHaveText(['조사 준비', '노출된 서비스', '약한 로그인 정책', '변조된 자료'][state.active]);
   return saved;
 }
@@ -298,7 +302,7 @@ test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 �
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'scan club-server'); await command(page, 'verify');
   await page.getByRole('button', { name: '힌트 보기' }).click();
-  await page.reload(); await expect(page.locator('#stage')).toHaveText('검증 완료');
+  await reloadGame(page); await expect(page.locator('#stage')).toHaveText('검증 완료');
   await expect(page.locator('#hint')).toHaveText('힌트 보기 (1/3)');
   await page.getByRole('button', { name: '다음 미션 →' }).click();
   await command(page, 'inspect login');
@@ -321,7 +325,7 @@ test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 �
   await command(page, 'hash files'); await command(page, 'verify');
   await expect(page.locator('#results')).toBeVisible();
   await expect(page.locator('#score')).toHaveText('100 / 100');
-  await page.reload(); await expect(page.locator('#results')).toBeVisible();
+  await reloadGame(page); await expect(page.locator('#results')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.getByRole('button', { name: '전체 초기화', exact: true }).click();
   await page.getByRole('button', { name: '초기화', exact: true }).click();
@@ -371,7 +375,7 @@ test('해시 복원 실패 안내 후 저장을 유지하고 재계산·재검�
   await expect(page.locator('#comparison').getByRole('row', { name: /budget.csv/ }).locator('td').nth(0)).toHaveText('변경 감지');
   await expect(page.locator('#comparison').getByRole('row', { name: /budget.csv/ }).locator('td').nth(1)).toHaveText('다시 조사 필요');
   await page.locator('#hint').click();
-  await page.reload();
+  await reloadGame(page);
   await expect(page.locator('#notice')).toContainText('해시 계산을 완료하지 못했습니다');
   await expect(page.locator('#hint')).toHaveText('힌트 보기 (3/3)');
   await page.evaluate(() => { window.failHash = false; });
@@ -468,7 +472,7 @@ test('설명·포트·파일 변경 후 이전 통과 결과를 지우고 재검
   await page.locator('#port-8080').selectOption('allow');
   await expect(page.locator('#settings')).not.toContainText('✓ 통과');
   await expect(page.locator('#verification-status')).toContainText('재검증이 필요');
-  await page.reload();
+  await reloadGame(page);
   await page.getByRole('tab', { name: '방어 설정' }).click();
   await expect(page.locator('#verification-status')).toContainText('재검증이 필요');
   await expect(page.locator('#next')).toBeHidden();
@@ -517,7 +521,7 @@ test('포트 전후 비교는 정상 서비스와 과도한 차단을 구분하�
   await expect(service.locator('td').nth(1)).toHaveText('다시 조사 필요');
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'scan club-server'); await command(page, 'verify');
-  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  await reloadGame(page); await page.getByRole('tab', { name: '전후 비교' }).click();
   await expect(service.locator('td').nth(0)).toHaveText('접근 허용 · 정상');
   await expect(service.locator('td').nth(1)).toHaveText('접근 차단 · 열람 불가');
   await expect(page.locator('#next')).toBeHidden();
@@ -556,14 +560,14 @@ test('파일 전후 비교는 복구 전 변경 기록을 유지하고 새 계�
   await page.locator('#answer-1').check();
   await page.getByRole('tab', { name: '방어 설정' }).click();
   await page.getByRole('button', { name: 'budget.csv 선택 및 복구', exact: true }).click();
-  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  await reloadGame(page); await page.getByRole('tab', { name: '전후 비교' }).click();
   const budget = page.locator('#comparison').getByRole('row', { name: /budget.csv/ });
   await expect(budget.locator('td').nth(0)).toHaveText('변경 감지');
   await expect(budget.locator('td').nth(1)).toHaveText('다시 조사 필요');
   await expect(page.locator('#results')).toBeHidden();
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'hash files'); await command(page, 'verify');
-  await page.reload(); await page.getByRole('tab', { name: '전후 비교' }).click();
+  await reloadGame(page); await page.getByRole('tab', { name: '전후 비교' }).click();
   await expect(budget.locator('td').nth(0)).toHaveText('변경 감지'); await expect(budget.locator('td').nth(1)).toHaveText('일치');
   await expect(page.locator('#comparison-status')).toContainText('재검증을 모두 통과');
   await expect(page.locator('#answer-feedback')).toContainText('미션을 완료했습니다');

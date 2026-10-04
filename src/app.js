@@ -16,6 +16,7 @@ let storage = null;
 let session = null;
 let hashRetryNeeded = false;
 let saveNotice = '';
+let pendingSaves = 0;
 const hashRetryNotice = '진행은 복원했지만 해시 계산을 완료하지 못했습니다. hash files를 다시 실행한 뒤 현재 상태를 재검증하세요.';
 const blockedNotices = {
   preserved: '저장 데이터가 손상되었거나 지원하지 않는 형식입니다. 원본을 보존했습니다. 자동 저장을 중단합니다.',
@@ -25,7 +26,7 @@ const blockedNotices = {
 function renderNotice() {
   $('notice').textContent = [saveNotice, hashRetryNeeded ? hashRetryNotice : ''].filter(Boolean).join('\n');
   $('reload-progress').hidden = session?.blocked !== 'conflict';
-  $('save-status').textContent = saveNotice ? '자동 저장 확인 필요' : '이 브라우저에 자동 저장';
+  $('save-status').textContent = pendingSaves ? '저장 중…' : saveNotice ? '자동 저장 확인 필요' : '이 브라우저에 자동 저장';
 }
 try {
   storage = window.localStorage;
@@ -40,11 +41,12 @@ function clearHashRetryNotice() {
 }
 async function persist() {
   if (!session) return;
+  pendingSaves++; renderNotice();
   try { await session.save(state); saveNotice = ''; }
   catch (error) {
     saveNotice = blockedNotices[error.code] ?? '저장에 실패했습니다. 현재 플레이는 유지됩니다. 진행 내보내기로 보관하세요.';
   }
-  renderNotice();
+  pendingSaves--; renderNotice();
 }
 window.addEventListener('storage', event => {
   if (!session || ![CURRENT_SAVE_KEY, SAVE_KEY].includes(event.key) && event.key !== null) return;
