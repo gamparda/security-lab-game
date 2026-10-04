@@ -12,7 +12,7 @@ test.beforeEach(async({page},testInfo)=>{
   if(process.env.CI && desktop3D(testInfo)) {
     // Hosted runners use software graphics. Keep the real scene, collisions,
     // rendering and input, at a smaller viewport rather than bypassing them.
-    await page.setViewportSize({width:800,height:600});
+    await page.setViewportSize({width:640,height:480});
     testInfo.setTimeout(60000);
   }
 });
@@ -98,17 +98,24 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
   await expect.poll(async()=> (await diagnostics(page)).doors[0].angle).toBeCloseTo(100*Math.PI/180,2);
   expect((await diagnostics(page)).doors[0].pivot[0]).toBeCloseTo(-.64,2);
   await walkUntil(page,'KeyW',d=>d.position[2]<6.5);
-  const walking=(await diagnostics(page)).position[2];
+  const walking=await diagnostics(page);
   await page.keyboard.down('KeyW'); await page.waitForTimeout(400); await page.keyboard.up('KeyW');
-  const walkDistance=walking-(await diagnostics(page)).position[2];
-  const sprinting=(await diagnostics(page)).position[2];
+  const sprinting=await diagnostics(page);
+  const walkSpeed=(walking.position[2]-sprinting.position[2])/(sprinting.movementSeconds-walking.movementSeconds);
   await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW'); await page.waitForTimeout(400);
   await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
-  expect(sprinting-(await diagnostics(page)).position[2]).toBeGreaterThan(walkDistance*1.3);
-  await page.setViewportSize({width:1200,height:800});
-  expect((await page.locator('#lab-canvas').boundingBox()).width).toBe(1200);
+  const afterSprint=await diagnostics(page);
+  // Compare actual distance per simulated second, since software rendering and
+  // automation latency can make equal wall-clock key pulses unequal in-game.
+  const sprintSpeed=(sprinting.position[2]-afterSprint.position[2])/(afterSprint.movementSeconds-sprinting.movementSeconds);
+  expect(walkSpeed).toBeCloseTo(2.6,1);
+  expect(sprintSpeed).toBeCloseTo(4.2,1);
+  expect(sprintSpeed).toBeGreaterThan(walkSpeed*1.3);
+  const resized=process.env.CI ? {width:800,height:600} : {width:1200,height:800};
+  await page.setViewportSize(resized);
+  expect((await page.locator('#lab-canvas').boundingBox()).width).toBe(resized.width);
   const before=await diagnostics(page);
-  await page.mouse.move(800,400); await page.mouse.move(1000,400);
+  await page.mouse.move(resized.width/2,resized.height/2); await page.mouse.move(resized.width/2+100,resized.height/2);
   expect((await diagnostics(page)).yaw).not.toBeCloseTo(before.yaw,2);
   await page.keyboard.press('Escape');
   await expect(page.locator('#scene-cover')).toBeVisible();

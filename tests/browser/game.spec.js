@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
-// Keep 2D regressions headless even when Linux 3D input uses an Xvfb window.
-test.use({headless:true});
+// Keep 2D regressions headless without competing for Windows software graphics.
+test.use({headless:true, ...(process.platform==='win32' && process.env.CI ? {
+  launchOptions: {args:['--disable-gpu'], ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+    ? {executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH} : {})},
+} : {})});
 import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin, restoreFile, nextMission } from '../../src/engine.js';
 import { saveGame, SAVE_KEY, CURRENT_SAVE_KEY, BACKUP_KEY, exportGame } from '../../src/storage.js';
 import { ORIGINAL_FILES } from '../../src/missions.js';

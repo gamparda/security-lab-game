@@ -51,6 +51,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./tests/windows_launcher.ps1
+        env:
+          SECURITYLAB_HEADED: '1'
       - name: Test packaged Unix executable
         if: runner.os == 'macOS'
         run: GAME_SERVER='dist/SecurityLab --smoke-test' npm run check

@@ -382,6 +382,7 @@ export function get3DDiagnostics() {
     contextLost: contextLost || Boolean(graphicsContext?.isContextLost()), renderedFrames, generation, initializing: Boolean(preparation),
     toolsOpen, pointerLocked: player?.controls.isLocked ?? false, tab: currentTab,
     position: camera?.position.toArray(), rotation: camera?.rotation.toArray().slice(0, 3),
+    movementSeconds: player?.movementSeconds ?? 0,
     yaw: direction ? Math.atan2(-direction.x, -direction.z) : 0, pitch: direction ? Math.asin(direction.y) : 0,
     target: interaction?.target?.name ?? null,
     doors: interaction?.doors.map(door => ({ name: door.object.name, angle: door.angle, target: door.target, pivot: door.object.position.toArray() })) ?? [],

@@ -19,9 +19,9 @@ const chromiumLaunch = {
 };
 export default defineConfig({
   testDir: './tests/browser',
-  // Only the desktop 3D test file opens a native window. Its tests run in
-  // sequence while the headless regression projects share a second worker.
-  workers: process.env.CI ? 2 : undefined,
+  // Windows software graphics must not compete across browser processes.
+  // Linux keeps one native 3D window alongside headless 2D regressions.
+  workers: process.env.CI ? (isWindows ? 1 : 2) : undefined,
   use: {
     baseURL: process.env.GAME_URL || 'http://localhost:5173',
     headless: true, trace: 'retain-on-failure',
@@ -40,6 +40,7 @@ export default defineConfig({
       grep: /game\.spec\.js|@windows-edge/,
       use: {
         browserName: 'chromium', channel: 'msedge',
+        headless: process.env.SECURITYLAB_HEADED !== '1',
         launchOptions: { args: chromiumArgs },
         viewport: { width: 1440, height: 1000 },
       },

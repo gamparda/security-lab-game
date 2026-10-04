@@ -22,7 +22,7 @@ export class Player {
     window.addEventListener('blur', this.clear);
     this.controls.addEventListener('unlock', this.clear);
   }
-  reset() { this.camera.position.copy(this.spawn); this.camera.position.y = 1.65; this.camera.rotation.set(0,0,0); this.keys.clear(); }
+  reset() { this.camera.position.copy(this.spawn); this.camera.position.y = 1.65; this.camera.rotation.set(0,0,0); this.keys.clear(); this.movementSeconds = 0; }
   update(dt, dynamicBoxes = []) {
     if (!this.controls.isLocked) return;
     let x = Number(this.keys.has('KeyD')) - Number(this.keys.has('KeyA'));
@@ -33,7 +33,9 @@ export class Player {
     this.camera.getWorldDirection(this.forward); this.forward.y=0; this.forward.normalize();
     this.right.crossVectors(this.forward, this.camera.up).normalize();
     const speed = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 4.2 : 2.6;
-    const distance = speed * Math.min(.1, Math.max(0,dt));
+    const movementSeconds = Math.min(.1, Math.max(0,dt));
+    this.movementSeconds += movementSeconds;
+    const distance = speed * movementSeconds;
     const moved = moveWithCollisions(this.camera.position, (this.right.x*x+this.forward.x*z)*distance,
       (this.right.z*x+this.forward.z*z)*distance, [...this.boxes,...dynamicBoxes]);
     this.camera.position.set(moved.x,1.65,moved.z);

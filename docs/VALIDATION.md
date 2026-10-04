@@ -16,7 +16,7 @@ SECURITYLAB_HEADED=1 SECURITYLAB_CROSS_BROWSER=1 xvfb-run --auto-servernum --ser
 
 Linux 브라우저 검사 실패 시 `test-results`의 trace와 오류 내용을 GitHub Actions 아티팩트로 7일 보관한다. 테스트용 이동이나 마우스 잠금 우회는 사용하지 않는다.
 
-Windows CI는 일반 Chromium의 headless 모드와 D3D11 WARP 소프트웨어 그래픽을 명시한다. 로컬 Windows 기본 검사는 D3D11을 유지한다. 단독 EXE 검사는 내장 GLB의 실제 첫 화면을 먼저 확인한 뒤 전체 PC·모바일 및 Edge 검사를 진행하며, 실패 trace를 7일 보관한다.
+Windows CI의 3D 검사는 일반 Chromium·Edge의 실제 창과 D3D11 WARP 소프트웨어 그래픽을 사용한다. 640 × 480 화면에서 한 worker로 실행하며, 2D 검사는 headless에서 GPU를 끄고 실행해 소프트웨어 그래픽 경쟁을 줄인다. 달리기는 실제 키 입력으로 이동한 거리와 시뮬레이션 시간을 비교한다. 로컬 Windows 기본 검사는 D3D11을 유지한다. 단독 EXE 검사는 내장 GLB의 실제 첫 화면을 먼저 확인한 뒤 전체 PC·모바일 및 Edge 검사를 진행하며, 실패 trace를 7일 보관한다.
 
 ## 게시 버전
 
