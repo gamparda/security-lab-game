@@ -5,6 +5,16 @@ import { publishMission, onToolRequest } from './labbridge.js';
 import { initSceneView } from './scene-entry.js';
 
 const $ = id => document.getElementById(id);
+for (const dialog of document.querySelectorAll('dialog')) {
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab' || !dialog.open) return;
+    const controls = [...dialog.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')]
+      .filter(control => !control.disabled && control.tabIndex >= 0 && control.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  });
+}
 const el = (tag, text, className) => {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;

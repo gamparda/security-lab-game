@@ -574,7 +574,7 @@ test('파일 복구는 기준·변경 조사 후 열리고 잘못 고른 파일�
   await expect(budget).toBeEnabled();
   await page.getByRole('button', { name: 'notice.txt 선택 및 복구', exact: true }).click();
   await expect(budget).toBeEnabled();
-  await budget.click();
+  await budget.focus(); await page.keyboard.press('Enter');
   await expect(budget).toBeFocused();
   await page.getByRole('tab', { name: '가상 터미널' }).click();
   await command(page, 'hash files'); await command(page, 'verify');

@@ -102,5 +102,6 @@ export function initSceneView() {
   });
   const query = new URLSearchParams(location.search).get('view');
   const coarse = matchMedia('(pointer: coarse)').matches;
+  if (query === '2d') remember('2d');
   if (query === '3d' || query !== '2d' && !coarse && preference() === '3d') void show3D();
 }

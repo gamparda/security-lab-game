@@ -8,6 +8,14 @@ const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene3d.js')
 const VIEW_KEY='security-lab-view';
 const desktop3D=testInfo=>['desktop','windows-edge'].includes(testInfo.project.name);
 const main3D=testInfo=>testInfo.project.name==='desktop';
+test.beforeEach(async({page},testInfo)=>{
+  if(process.env.CI && desktop3D(testInfo)) {
+    // Hosted runners use software graphics. Keep the real scene, collisions,
+    // rendering and input, at a smaller viewport rather than bypassing them.
+    await page.setViewportSize({width:800,height:600});
+    testInfo.setTimeout(60000);
+  }
+});
 async function savedGame(page) {
   await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
   return page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);
@@ -273,7 +281,7 @@ test('view preference persists independently and explicit 2D wins over saved 3D'
   expect(await savedGame(page)).toBeNull();
   await page.goto('/'); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
   await page.goto('/?view=2d'); await expect(page.locator('#lab-tools')).toBeVisible();
-  expect(await page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('2d');
+  await expect.poll(()=>page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('2d');
   await page.goto('/'); await expect(page.locator('#lab-world')).toBeHidden();
   await expect(page.locator('#mission-title')).toHaveText('조사 준비');
 });
@@ -445,7 +453,7 @@ test('3D tools preserve native dialogs and reject stale saves from another tab',
     expect(await savedGame(page)).toBe(saved);
   }
   await page.keyboard.press('Escape'); await expect(page.locator('#lab-tools')).toBeHidden();
-  await expect(page.locator('#scene-start')).toBeFocused();
+  await expect(page.locator('#world-notes')).toBeFocused();
   await expect(page.locator('#view-switch')).toBeEnabled();
   await page.locator('#world-notes').click();
   const other=await context.newPage(); await other.goto('/?view=2d');

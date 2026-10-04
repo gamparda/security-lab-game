@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 const isWindows = process.platform === 'win32';
 // Hosted runners may render in software. D3D11 is a Windows backend choice,
 // not evidence of hardware acceleration or representative PC performance.
-const chromiumArgs = isWindows
+const chromiumArgs = isWindows && !process.env.CI
   ? ['--enable-gpu', '--use-gl=angle', '--use-angle=d3d11', '--enable-unsafe-swiftshader']
   : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
 const chromiumLaunch = {
