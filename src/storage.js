@@ -110,12 +110,13 @@ function saveError(code, message) {
 export async function createSaveSession(storage, locks = globalThis.navigator?.locks) {
   let expected = storage.getItem(CURRENT_SAVE_KEY);
   const legacy = storage.getItem(SAVE_KEY);
-  let revision = 0, loaded;
+  let revision = 0, loaded, needsBackup = false;
   try {
     if (expected !== null) {
       const envelope = JSON.parse(expected);
       if (envelope.version !== 2 || !Number.isSafeInteger(envelope.revision) || envelope.revision < 1) throw new Error('Unknown save');
       revision = envelope.revision;
+      needsBackup = envelope.game?.version === 1;
       loaded = await decodeGame(JSON.stringify(envelope.game));
     } else loaded = legacy === null ? { state: initialState(), recovered: false } : await decodeGame(legacy);
   } catch { loaded = { state: initialState(), recovered: true }; }
@@ -136,12 +137,13 @@ export async function createSaveSession(storage, locks = globalThis.navigator?.l
           if (session.changed()) throw saveError('conflict', 'Save changed in another tab');
           if (revision >= Number.MAX_SAFE_INTEGER) throw saveError('preserved', 'Save revision limit');
           // No writes to the original v1 key. Back up before migrating or importing.
-          if (backup || expected === null && legacy !== null) storage.setItem(BACKUP_KEY, expected ?? legacy);
+          if (backup || needsBackup || expected === null && legacy !== null) storage.setItem(BACKUP_KEY, expected ?? legacy);
           const raw = JSON.stringify({ version: 2, revision: revision + 1, game });
           storage.setItem(CURRENT_SAVE_KEY, raw);
           expected = raw;
           revision++;
           blocked = null;
+          needsBackup = false;
         });
       });
       queue = result.catch(() => {});

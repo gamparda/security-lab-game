@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initialState, progress, runCommand, answerFeedback, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission, score, sha256, accepted, loginSimulation, nextAction, validateMissionDefinitions } from '../src/engine.js';
 import { MISSIONS, ORIGINAL_FILES, MISSION_INDEX } from '../src/missions.js';
-import { loadGame, saveGame, SAVE_KEY, createSaveSession, CURRENT_SAVE_KEY, exportGame, importGame } from '../src/storage.js';
+import { loadGame, saveGame, SAVE_KEY, createSaveSession, CURRENT_SAVE_KEY, BACKUP_KEY, exportGame, importGame } from '../src/storage.js';
 
 async function tutorial(state) {
   await runCommand(state, 'help'); await runCommand(state, 'inspect approval'); applyAnswer(state, 0);
@@ -116,6 +116,17 @@ test('이전 저장 원본은 v1과 v2 백업 모두 가져올 수 있음', asyn
   assert.equal((await importGame(storage.getItem(SAVE_KEY))).state.active, 1);
   const session = await createSaveSession(storage, serializedLocks()); await session.save(state);
   assert.equal((await importGame(storage.getItem(CURRENT_SAVE_KEY))).state.active, 1);
+});
+
+test('이전 v2 저장 내부 형식을 ID 형식으로 변환하기 전에 최신 원본을 백업함', async () => {
+  const state = initialState(); await tutorial(state);
+  const storage = memoryStorage(); saveGame(state, storage);
+  const raw = JSON.stringify({ version: 2, revision: 5, game: JSON.parse(storage.getItem(SAVE_KEY)) });
+  storage.setItem(CURRENT_SAVE_KEY, raw);
+  const session = await createSaveSession(storage, serializedLocks()); await session.save(session.state);
+  assert.equal(storage.getItem(BACKUP_KEY), raw);
+  const current = JSON.parse(storage.getItem(CURRENT_SAVE_KEY));
+  assert.equal(current.revision, 6); assert.equal(current.game.active, 'services');
 });
 
 test('다음 행동은 조사·설명·방어·재조회·재검증 순서를 안내함', async () => {
