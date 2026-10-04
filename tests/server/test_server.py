@@ -1,4 +1,5 @@
 import http.client
+import hashlib
 import json
 import os
 import queue
@@ -82,6 +83,7 @@ class ServerTest(unittest.TestCase):
                 self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
                 self.assertEqual(headers['Cache-Control'], 'no-store')
                 self.assertEqual(headers['X-Security-Lab-Version'], module.APP_VERSION)
+                self.assertEqual(headers['X-Security-Lab-SHA256'], hashlib.sha256(body).hexdigest())
 
     def test_home_and_head(self):
         status, headers, body = self.request('GET', '/')
@@ -91,6 +93,21 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(head_body, b'')
         self.assertEqual(head_headers['Content-Length'], headers['Content-Length'])
+
+    def test_scene_retry_namespace_preserves_assets_and_cannot_expose_core_or_private_files(self):
+        prefix = '/__scene__/test123-1/'
+        for name, content_type in module.OPTIONAL_FILES.items():
+            with self.subTest(name=name):
+                status, headers, body = self.request('GET', prefix + name)
+                self.assertEqual((status, body), (200, self.server.assets[name]))
+                self.assertEqual(headers['Content-Type'], content_type)
+                self.assertEqual(headers['X-Security-Lab-SHA256'], hashlib.sha256(body).hexdigest())
+                head_status, head_headers, head_body = self.request('HEAD', prefix + name)
+                self.assertEqual((head_status, head_body), (200, b''))
+                self.assertEqual(head_headers['Content-Length'], str(len(body)))
+        for path in [prefix + 'src/app.js', prefix + 'src/labbridge.js', prefix + 'README.md',
+                     prefix + 'src/../index.html', '/__scene__/bad_/src/scene3d.js']:
+            self.assertEqual(self.request('GET', path)[0], 404)
 
     def test_startup_guard_is_authorized_by_matching_strict_csp(self):
         _, headers, body = self.request('GET', '/')
@@ -304,10 +321,16 @@ class NodeServerTest(unittest.TestCase):
                         self.assertEqual(headers['Content-Security-Policy'], module.CSP)
                         self.assertEqual(headers['Cache-Control'], 'no-store')
                         self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
+                        self.assertEqual(headers['X-Security-Lab-SHA256'], hashlib.sha256(body).hexdigest())
                         self.assertNotIn('unsafe-eval', headers['Content-Security-Policy'])
                 status, headers, body = request_port(port, 'HEAD', '/assets/models/security_lab.glb')
                 self.assertEqual((status, body), (200, b''))
                 self.assertEqual(int(headers['Content-Length']), len(self.assets['assets/models/security_lab.glb']))
+                for name in ['src/scene3d.js', 'vendor/three/build/three.core.js', 'src/scene3d.css']:
+                    status, headers, body = request_port(port, 'GET', '/__scene__/test123-1/' + name)
+                    self.assertEqual((status, body), (200, self.assets[name]))
+                for path in ['/__scene__/test123-1/src/app.js', '/__scene__/bad_/src/scene3d.js', '/__scene__/test123-1/README.md']:
+                    self.assertEqual(request_port(port, 'GET', path)[0], 404)
                 for path in ['/src/../index.html', '/src/%2e%2e/index.html', '/%2e%2e/index.html',
                              '/run.py', '/vendor/three/LICENSE', '/assets/textures/authoring.jpg', '/%']:
                     self.assertEqual(request_port(port, 'GET', path)[0], 404, path)

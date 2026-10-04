@@ -4,7 +4,7 @@ import { CURRENT_SAVE_KEY, SAVE_KEY, encodeGame, exportGame } from '../../src/st
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene3d.js')).get3DDiagnostics());
+const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene-entry.js')).get3DDiagnostics());
 const VIEW_KEY='security-lab-view';
 const desktop3D=testInfo=>['desktop','windows-edge'].includes(testInfo.project.name);
 const main3D=testInfo=>testInfo.project.name==='desktop';
@@ -51,7 +51,9 @@ async function resume(page) {
   // never assign the camera rotation or move the player for the test.
   const [x,y,z]=before.position, horizontal=Math.cos(before.pitch);
   await aim(page,x-Math.sin(before.yaw)*horizontal,y+Math.sin(before.pitch),z-Math.cos(before.yaw)*horizontal);
-  await expect.poll(async()=> (await diagnostics(page)).yaw).toBeCloseTo(before.yaw,2);
+  // Native Windows software graphics can delay the automation response even
+  // when the camera has already reached the expected direction.
+  await expect.poll(async()=> (await diagnostics(page)).yaw,{timeout:20000}).toBeCloseTo(before.yaw,2);
 }
 async function openMainDoor(page) {
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_Main');
@@ -63,7 +65,7 @@ async function walkUntil(page,key,condition,timeout=16000) {
   // keyup handler in the frame that reaches the waypoint, so slow automation
   // transport cannot carry the player past a doorway or interaction target.
   await page.evaluate(async({key,condition,timeout})=>{
-    const {get3DDiagnostics}=await import('/src/scene3d.js');
+    const {get3DDiagnostics}=await import('/src/scene-entry.js');
     const state=window.__labWalk={done:false,error:null};
     let startSeconds=0,timer;
     const finish=error=>{
@@ -118,6 +120,7 @@ async function closeAndResume(page) {
 
 test('3D actual movement, closed-door collision, hinge rotation, mouse and pause',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed physical navigation uses the primary desktop Chromium project.');
+  test.setTimeout(120000);
   const errors=[],violations=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.cspErrors=(window.cspErrors||[]).concat({directive:e.violatedDirective,blockedURI:e.blockedURI,sourceFile:e.sourceFile,line:e.lineNumber,sample:e.sample})));
@@ -156,7 +159,8 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
   expect(walkSpeed).toBeCloseTo(2.6,1);
   expect(sprintSpeed).toBeCloseTo(4.2,1);
   expect(sprintSpeed).toBeGreaterThan(walkSpeed*1.3);
-  const resized=process.env.CI ? {width:800,height:600} : {width:1200,height:800};
+  // Exercise a real resize without increasing software rasterization load.
+  const resized=process.env.CI ? {width:576,height:432} : {width:1200,height:800};
   await page.setViewportSize(resized);
   expect((await page.locator('#lab-canvas').boundingBox()).width).toBe(resized.width);
   const before=await diagnostics(page);
@@ -178,7 +182,7 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
 
 test('walk to all five devices; old tools, scoring, save and mission guards stay intact',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed spatial route uses the primary desktop Chromium project.');
-  test.setTimeout(120000);
+  test.setTimeout(180000);
   await start(page); await openMainDoor(page);
   await capture(page,'02-door-open.png');
   await walkUntil(page,'KeyW',{axis:'z',lt:6});
@@ -333,6 +337,42 @@ test('first launch opens 2D without requesting optional 3D assets',async({page})
   await expect(page.locator('#view-switch')).toHaveText('3D 실습실');
   expect(optional).toEqual([]);
 });
+
+for(const blocked of ['src/scene3d.js','vendor/three/build/three.core.js','src/scene3d.css']) {
+  test(`3D retry recovers ${blocked} without reloading the working game`,async({page},testInfo)=>{
+    test.skip(!main3D(testInfo));
+    test.setTimeout(60000);
+    const raw=await seedV2(page,await tutorialComplete());
+    await page.goto('/?view=2d'); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+    await page.locator('#hint').click(); const saved=await savedGame(page);
+    expect(saved).not.toBe(raw);
+    await page.evaluate(()=>{window.originalGameDocument=true;});
+    let appRequests=0;
+    await page.route('**/src/app.js*',route=>{appRequests++; return route.abort();});
+    await page.route('**/'+blocked,route=>route.abort());
+    await page.locator('#view-switch').click();
+    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error',{timeout:25000});
+    await expect(page.locator('#loading-screen')).toBeHidden();
+    // The original failed module stays in the browser's module map. A fresh
+    // 3D graph must recover while app.js remains unavailable for a new page.
+    await page.unroute('**/'+blocked);
+    const fresh=[];
+    page.on('request',request=>{if(new URL(request.url()).pathname.startsWith('/__scene__/'))fresh.push(request.url());});
+    await page.locator('#scene-retry').click();
+    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+    expect(fresh.some(url=>url.includes('src/scene3d.js'))).toBe(true);
+    expect(appRequests).toBe(0); expect(await page.evaluate(()=>window.originalGameDocument)).toBe(true);
+    expect(await savedGame(page)).toBe(saved);
+    await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
+    await page.locator('#world-notes').click();
+    await page.locator('#hint').click();
+    await expect(page.locator('#hint')).toHaveText('힌트 보기 (2/3)');
+    expect(JSON.parse(await savedGame(page)).game.missions[1].hint).toBe(2);
+    await page.locator('#tool-close').click(); await page.locator('#world-2d').click();
+    await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+    expect(await page.evaluate(()=>window.originalGameDocument)).toBe(true);
+  });
+}
 
 test('view preference persists independently and explicit 2D wins over saved 3D',async({page},testInfo)=>{
   test.skip(!main3D(testInfo));

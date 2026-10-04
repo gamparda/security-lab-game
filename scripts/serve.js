@@ -71,9 +71,10 @@ const headers = {
   'Cache-Control': 'no-store',
   'X-Security-Lab-Version': version,
 };
+const assetDigests = new Map([...assets].map(([name, body]) => [name, createHash('sha256').update(body).digest('hex')]));
 const server = createServer((req, res) => {
-  function respond(status, body, type = 'text/plain; charset=utf-8') {
-    res.writeHead(status, { ...headers, 'Content-Type': type, 'Content-Length': Buffer.byteLength(body) });
+  function respond(status, body, type = 'text/plain; charset=utf-8', digest) {
+    res.writeHead(status, { ...headers, ...(digest ? { 'X-Security-Lab-SHA256': digest } : {}), 'Content-Type': type, 'Content-Length': Buffer.byteLength(body) });
     res.end(req.method === 'HEAD' ? undefined : body);
   }
   if (!['GET', 'HEAD'].includes(req.method)) {
@@ -83,10 +84,15 @@ const server = createServer((req, res) => {
   try {
     // Preserve dot segments until the exact allowlist check; URL() normalizes them.
     const pathname = decodeURIComponent(req.url.split(/[?#]/, 1)[0]);
-    const relative = pathname === '/' ? 'index.html' : pathname.startsWith('/') ? pathname.slice(1) : '';
+    let relative = pathname === '/' ? 'index.html' : pathname.startsWith('/') ? pathname.slice(1) : '';
+    if (relative.startsWith('__scene__/')) {
+      const retry = /^__scene__\/[a-z0-9]{1,16}-[0-9]{1,6}\/(.+)$/.exec(relative);
+      if (!retry || !optionalFiles.includes(retry[1])) throw new Error('Not a 3D retry asset');
+      relative = retry[1];
+    }
     const body = assets.get(relative);
     if (!publicFiles.has(relative) || !body) throw new Error('Not public or unavailable');
-    respond(200, body, types[extname(relative)]);
+    respond(200, body, types[extname(relative)], assetDigests.get(relative));
   } catch {
     respond(404, 'Not found');
   }

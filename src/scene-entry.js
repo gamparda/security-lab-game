@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const VIEW_KEY = 'security-lab-view';
 let sceneModule, transaction, attempt = 0, mode = '2d', initialized = false;
-let needsReload = false;
+let retryGraph = false, graphAttempt = 0;
 function preference() { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } }
 function remember(value) { try { localStorage.setItem(VIEW_KEY, value); } catch { /* View choice is optional. */ } }
 function address(value) {
@@ -23,12 +23,12 @@ function display(value) {
   $('view-switch').disabled = false;
   $('view-switch').textContent = value === '3d' ? '2D 도구 화면' : '3D 실습실';
 }
-function loadStyles(signal) {
+function loadStyles(signal, prefix = '') {
   if (getComputedStyle(document.documentElement).getPropertyValue('--scene-styles-ready').trim() === '1') return Promise.resolve();
   $('scene-styles')?.remove();
   return new Promise((resolve, reject) => {
     const link = document.createElement('link'); link.id = 'scene-styles'; link.rel = 'stylesheet';
-    link.href = 'src/scene3d.css';
+    link.href = prefix + 'src/scene3d.css';
     const cleanup = () => { signal.removeEventListener('abort', aborted); link.onload = null; link.onerror = null; };
     const aborted = () => { cleanup(); link.remove(); reject(new Error('3D 준비를 취소했습니다.')); };
     link.onload = () => {
@@ -58,15 +58,18 @@ export async function show3D() {
   $('scene-start').hidden = true; $('scene-retry').hidden = true;
   $('scene-progress').hidden = false; $('scene-progress').value = 0;
   let timer;
+  // Give every module in a failed graph a fresh URL, while the working game
+  // and its save session stay in this document.
+  const prefix = retryGraph ? `__scene__/${Date.now().toString(36)}-${++graphAttempt}/` : '';
   try {
     await Promise.race([
       (async () => {
         const [module] = await Promise.all([
-          sceneModule ? Promise.resolve(sceneModule) : import('./scene3d.js'),
-          loadStyles(current.signal),
+          sceneModule ? Promise.resolve(sceneModule) : prefix ? import('/' + prefix + 'src/scene3d.js') : import('./scene3d.js'),
+          loadStyles(current.signal, prefix),
         ]);
         if (token !== attempt || current.signal.aborted) return;
-        sceneModule = module; needsReload = false;
+        sceneModule = module; retryGraph = false;
         await module.init3D();
         if (token !== attempt || current.signal.aborted) return;
         const ready = module.get3DDiagnostics();
@@ -78,7 +81,7 @@ export async function show3D() {
   } catch (error) {
     if (token !== attempt || mode !== '3d') return;
     current.abort();
-    needsReload = !sceneModule;
+    retryGraph = !sceneModule;
     sceneModule?.cancelPreparation(error);
     $('lab-world').dataset.state = 'error';
     $('scene-title').textContent = '실습실을 열지 못했습니다.';
@@ -94,14 +97,17 @@ export function initSceneView() {
   $('world-2d').addEventListener('click', () => show2D());
   $('scene-fallback').addEventListener('click', () => show2D());
   document.addEventListener('scene3d-retry', () => {
-    if (needsReload) location.reload(); else void show3D();
+    void show3D();
   });
   // A graph load failure can occur before the heavy module installs its events.
   $('scene-retry').addEventListener('click', () => {
-    if (!sceneModule) { if (needsReload) location.reload(); else void show3D(); }
+    if (!sceneModule) void show3D();
   });
   const query = new URLSearchParams(location.search).get('view');
   const coarse = matchMedia('(pointer: coarse)').matches;
   if (query === '2d') remember('2d');
   if (query === '3d' || query !== '2d' && !coarse && preference() === '3d') void show3D();
+}
+export function get3DDiagnostics() {
+  return sceneModule?.get3DDiagnostics() || { mode, ready: false, firstFrameReady: false };
 }

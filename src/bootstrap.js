@@ -45,12 +45,63 @@
   async function loadGame() {
     let timer;
     try {
+      // A rejected module fetch is cached by the browser. A fresh document and
+      // entry URL keep an automatic retry from reusing that rejected request.
+      const retry = new URL(location.href).searchParams.has('startup-retry');
       await Promise.race([
-        import('./app.js'),
+        retry ? import('./app.js?retry=1') : import('./app.js'),
         new Promise((_, reject) => {
           timer = setTimeout(() => reject(new Error('Game startup timed out')), 30000);
         }),
       ]);
+    } finally { clearTimeout(timer); }
+  }
+
+  async function diagnoseGame(error) {
+    const files = ['src/app.js', 'src/engine.js', 'src/missions.js', 'src/storage.js', 'src/labbridge.js', 'src/scene-entry.js'];
+    const controller = new AbortController();
+    const completed = new Map();
+    let finishDeadline;
+    const deadline = new Promise(resolve => { finishDeadline = resolve; });
+    const timer = setTimeout(() => {
+      controller.abort();
+      finishDeadline(files.map(file => completed.get(file) || { file, failure: '파일 진단 시간 초과' }));
+    }, 3500);
+    try {
+      const checks = files.map(async file => {
+        try {
+          const response = await fetch(file, { cache: 'reload', signal: controller.signal, redirect: 'error' });
+          if (!response.ok) return { file, failure: `HTTP ${response.status}` };
+          const type = response.headers.get('Content-Type') || '(없음)';
+          if (!/(?:java|ecma)script/i.test(type)) return { file, failure: `JavaScript가 아닌 응답 (${type})` };
+          const body = await response.arrayBuffer();
+          if (!body.byteLength) return { file, failure: '빈 파일 응답' };
+          if (/^\s*</.test(new TextDecoder().decode(body).slice(0, 120))) return { file, failure: '코드 대신 HTML 응답' };
+          const expected = response.headers.get('X-Security-Lab-SHA256');
+          if (expected && crypto.subtle) {
+            const actual = [...new Uint8Array(await crypto.subtle.digest('SHA-256', body))]
+              .map(byte => byte.toString(16).padStart(2, '0')).join('');
+            if (actual !== expected) return { file, failure: '서버 원본과 응답 내용이 다름' };
+          }
+          return { file, version: response.headers.get('X-Security-Lab-Version') || '(확인 불가)' };
+        } catch (failure) {
+          return { file, failure: controller.signal.aborted ? '파일 응답 시간 초과' : `파일 요청 실패 (${failure.message})` };
+        }
+      });
+      const results = await Promise.race([Promise.all(checks.map(async check => {
+        const result = await check; completed.set(result.file, result); return result;
+      })), deadline]);
+      const failed = results.filter(result => result.failure);
+      const details = failed.length
+        ? failed.map(result => result.file + ': ' + result.failure).join('\n')
+        : '필수 모듈 HTTP 응답 정상 · 버전 ' + [...new Set(results.map(result => result.version))].join(', ');
+      let worker = '';
+      try { if (navigator.serviceWorker?.controller) worker = '\n로컬 주소에 서비스 워커 연결됨'; }
+      catch { /* Browser policy can disable access to service workers. */ }
+      return {
+        file: failed[0]?.file || 'src/app.js',
+        error: new Error(error.message + '\n' + details + worker + '\n브라우저: ' + navigator.userAgent),
+      };
     } finally { clearTimeout(timer); }
   }
 
@@ -90,7 +141,10 @@
         location.replace(address.href);
         return;
       }
-      guard.fail(phase, phase === 'styles' ? 'src/style.css' : 'src/app.js', error);
+      if (phase === 'game' && error.message !== 'Game startup timed out') {
+        const diagnosis = await diagnoseGame(error);
+        guard.fail(phase, diagnosis.file, diagnosis.error);
+      } else guard.fail(phase, phase === 'styles' ? 'src/style.css' : 'src/app.js', error);
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
