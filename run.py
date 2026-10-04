@@ -103,6 +103,7 @@ class GameServer(ThreadingHTTPServer):
             if not self.assets.get(name):
                 raise OSError(name + ': required cached file missing or empty')
         self.required_assets_ready = True
+        self.asset_digests = {name: hashlib.sha256(content).hexdigest() for name, content in self.assets.items()}
         self.optional_asset_warnings = dict(getattr(self.assets, 'optional_asset_warnings', {}))
         for name in OPTIONAL_FILES:
             if not self.assets.get(name):
@@ -116,7 +117,7 @@ class GameServer(ThreadingHTTPServer):
 
 
 class GameHandler(BaseHTTPRequestHandler):
-    def respond(self, status, content, content_type='text/plain; charset=utf-8'):
+    def respond(self, status, content, content_type='text/plain; charset=utf-8', digest=None):
         self.send_response(status)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(content)))
@@ -124,6 +125,8 @@ class GameHandler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Security-Lab-Version', APP_VERSION)
+        if digest:
+            self.send_header('X-Security-Lab-SHA256', digest)
         try:
             self.end_headers()
             if self.command != 'HEAD':
@@ -147,7 +150,7 @@ class GameHandler(BaseHTTPRequestHandler):
         if not content:
             self.respond(404, b'Not found')
             return
-        self.respond(200, content, PUBLIC_FILES[relative])
+        self.respond(200, content, PUBLIC_FILES[relative], self.server.asset_digests[relative])
 
     do_HEAD = do_GET
 

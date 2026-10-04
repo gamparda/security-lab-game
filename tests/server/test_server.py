@@ -1,4 +1,5 @@
 import http.client
+import hashlib
 import json
 import os
 import queue
@@ -82,6 +83,7 @@ class ServerTest(unittest.TestCase):
                 self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
                 self.assertEqual(headers['Cache-Control'], 'no-store')
                 self.assertEqual(headers['X-Security-Lab-Version'], module.APP_VERSION)
+                self.assertEqual(headers['X-Security-Lab-SHA256'], hashlib.sha256(body).hexdigest())
 
     def test_home_and_head(self):
         status, headers, body = self.request('GET', '/')
@@ -304,6 +306,7 @@ class NodeServerTest(unittest.TestCase):
                         self.assertEqual(headers['Content-Security-Policy'], module.CSP)
                         self.assertEqual(headers['Cache-Control'], 'no-store')
                         self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
+                        self.assertEqual(headers['X-Security-Lab-SHA256'], hashlib.sha256(body).hexdigest())
                         self.assertNotIn('unsafe-eval', headers['Content-Security-Policy'])
                 status, headers, body = request_port(port, 'HEAD', '/assets/models/security_lab.glb')
                 self.assertEqual((status, body), (200, b''))

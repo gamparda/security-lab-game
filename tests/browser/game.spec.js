@@ -322,7 +322,7 @@ test('게임 모듈이 느리면 초기화와 진행 복원 완료까지 기다�
   await seedGame(page, await missionState(2));
   let release;
   const gate = new Promise(resolve => { release = resolve; });
-  await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
+  await page.route('**/src/app.js*', async route => { await gate; await route.continue(); });
   try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
@@ -364,7 +364,7 @@ test('게임 준비가 8초를 넘어도 30초 이내 완료되면 정상 표시
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   await page.clock.install();
-  await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
+  await page.route('**/src/app.js*', async route => { await gate; await route.continue(); });
   try {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
@@ -379,7 +379,7 @@ test('응답하지 않는 게임 모듈은 제한 시간 이후 안내하고 늦
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   await page.clock.install();
-  await page.route('**/src/app.js', async route => { await gate; await route.continue(); });
+  await page.route('**/src/app.js*', async route => { await gate; await route.continue(); });
   try {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#loading-message')).toContainText('저장된 진행을 준비');
@@ -389,6 +389,69 @@ test('응답하지 않는 게임 모듈은 제한 시간 이후 안내하고 늦
     await expect(page.locator('#mission-title')).toHaveText('조사 준비');
     await expect(page.locator('#game')).toBeHidden();
     await expect(page.locator('#loading-screen')).toBeVisible();
+  } finally { release(); }
+});
+
+test('첫 app 파일 요청 실패는 새 모듈 주소로 재시도하고 진행을 복원함', async ({ page }) => {
+  const saved = await seedGame(page, await missionState(2));
+  const requests = [];
+  await page.route('**/src/app.js*', route => {
+    requests.push(new URL(route.request().url()).search);
+    return requests.length === 1 ? route.abort() : route.continue();
+  });
+  await reloadGame(page);
+  await expect(page.locator('#mission-title')).toHaveText('약한 로그인 정책');
+  await expect(page.locator('#game')).toBeVisible();
+  expect(requests).toEqual(['', '?retry=1']);
+  expect(await page.evaluate(key => localStorage.getItem(key), SAVE_KEY)).toBe(saved);
+});
+
+test('시작 오류는 app 대신 실제 404 의존 파일을 표시하고 진행을 보존함', async ({ page }) => {
+  const saved = await seedGame(page, await missionState(1));
+  await page.route('**/src/engine.js', route => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' }));
+  await reloadGame(page);
+  await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#loading-detail')).toHaveValue(/파일: src\/engine\.js[\s\S]*HTTP 404/);
+  expect(await page.evaluate(key => localStorage.getItem(key), SAVE_KEY)).toBe(saved);
+  await page.unroute('**/src/engine.js');
+  await page.locator('#loading-retry').click();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+});
+
+test('시작 오류는 JavaScript가 아닌 app 응답 종류를 표시함', async ({ page }) => {
+  await page.route('**/src/app.js*', route => route.fulfill({ status: 200, contentType: 'text/plain', body: 'export const value = 1;' }));
+  await page.goto('/?view=2d');
+  await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#loading-detail')).toHaveValue(/src\/app\.js[\s\S]*JavaScript가 아닌 응답 \(text\/plain\)/);
+  await expect(page.locator('#game')).toBeHidden();
+});
+
+test('시작 오류는 변조된 의존 파일 응답을 원본 해시로 구분함', async ({ page }) => {
+  await page.route('**/src/engine.js', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: 'export ???' });
+  });
+  await page.goto('/?view=2d');
+  await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('#loading-detail')).toHaveValue(/파일: src\/engine\.js[\s\S]*서버 원본과 응답 내용이 다름/);
+});
+
+test('시작 실패 진단도 응답이 멈추면 제한 시간 뒤 종료함', async ({ page }) => {
+  let requested, release, requests = 0;
+  const probe = new Promise(resolve => { requested = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.clock.install();
+  await page.route('**/src/app.js*', async route => {
+    if (++requests <= 2) { await route.abort(); return; }
+    requested(); await gate; await route.abort();
+  });
+  try {
+    await page.goto('/?view=2d', { waitUntil: 'domcontentloaded' }); await probe;
+    await page.clock.fastForward(3501);
+    await expect(page.locator('#loading-screen')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.locator('#loading-detail')).toHaveValue(/진단 시간 초과/);
+    await expect(page.locator('#loading-retry')).toBeVisible();
+    await expect(page.locator('#game')).toBeHidden();
   } finally { release(); }
 });
 
