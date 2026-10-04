@@ -1,6 +1,6 @@
 import { MISSIONS, ORIGINAL_FILES } from './missions.js';
 import { initialState, progress, stage, score, runCommand, answerFeedback, accepted, loginSimulation, applyAnswer, applyPort, applyLogin, canRestoreFiles, restoreFile, nextMission, resetMission } from './engine.js';
-import { createSaveSession, CURRENT_SAVE_KEY, SAVE_KEY, exportGame } from './storage.js';
+import { createSaveSession, CURRENT_SAVE_KEY, SAVE_KEY, exportGame, importGame, MAX_IMPORT_BYTES } from './storage.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, text, className) => {
@@ -57,6 +57,48 @@ $('export-progress').addEventListener('click', () => {
   const address = URL.createObjectURL(new Blob([exportGame(state)], { type: 'application/json' }));
   const link = el('a'); link.href = address; link.download = 'SecurityLab-progress.json'; link.click();
   setTimeout(() => URL.revokeObjectURL(address), 1000);
+});
+let importPending = null, importAttempt = 0;
+$('import-progress').addEventListener('click', () => {
+  if (busy) return;
+  importPending = null; importAttempt++;
+  $('progress-file').value = ''; $('progress-file').disabled = false;
+  $('import-message').textContent = ''; $('confirm-import').disabled = true;
+  $('import-dialog').returnValue = '';
+  $('import-dialog').showModal();
+});
+$('progress-file').addEventListener('change', async () => {
+  const attempt = ++importAttempt;
+  importPending = null; $('confirm-import').disabled = true;
+  const file = $('progress-file').files[0];
+  if (!file) return;
+  $('import-message').textContent = '진행을 확인하고 있습니다.';
+  try {
+    if (file.size > MAX_IMPORT_BYTES) throw new Error('진행 파일 크기는 128KiB 이하여야 합니다.');
+    let timer;
+    const loaded = await Promise.race([
+      importGame(await file.text()),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('진행 확인 시간이 초과됐습니다. 다시 선택해 주세요.')), 10000); }),
+    ]).finally(() => clearTimeout(timer));
+    if (attempt !== importAttempt || !$('import-dialog').open) return;
+    importPending = loaded;
+    $('import-message').textContent = MISSIONS[loaded.state.active].title + ' · 진행 확인 완료';
+    $('confirm-import').disabled = false;
+  } catch (error) { if (attempt === importAttempt) $('import-message').textContent = error.message; }
+});
+$('import-dialog').addEventListener('close', async () => {
+  importAttempt++;
+  if ($('import-dialog').returnValue !== 'confirm' || !importPending) return;
+  busy = true; pendingSaves++; render(); renderNotice();
+  try {
+    if (!session) throw new Error('안전한 저장을 사용할 수 없어 가져오기를 중단했습니다.');
+    await session.save(importPending.state, { backup: true, replacePreserved: true });
+    state = importPending.state; hashRetryNeeded = importPending.hashRetryNeeded === true;
+    saveNotice = ''; $('transfer-status').textContent = '진행을 가져왔습니다. 이전 저장은 백업했습니다.';
+    $('terminal').replaceChildren(); log(MISSIONS[state.active].objective); switchTab('terminal');
+  } catch (error) {
+    $('transfer-status').textContent = blockedNotices[error.code] ?? '가져오기에 실패했습니다. 현재 진행을 유지합니다. ' + error.message;
+  } finally { busy = false; pendingSaves--; render(); renderNotice(); $('command').focus(); }
 });
 renderNotice();
 function log(text, type = 'output') {
@@ -273,6 +315,7 @@ for (const kind of ['mission', 'all']) $('reset-' + kind).addEventListener('clic
   resetKind = kind;
   $('reset-title').textContent = kind === 'all' ? '전체 진행을 초기화할까요?' : '현재 미션을 초기화할까요?';
   $('reset-description').textContent = kind === 'all' ? '모든 미션의 정책, 단서, 점수, 힌트 사용 기록이 처음으로 돌아갑니다.' : '현재와 이후 미션의 정책, 단서, 점수, 힌트 사용 기록이 원본으로 돌아갑니다.';
+  $('reset-dialog').returnValue = '';
   $('reset-dialog').showModal();
 });
 $('reset-dialog').addEventListener('close', () => {

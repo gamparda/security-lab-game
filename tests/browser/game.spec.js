@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin, restoreFile, nextMission } from '../../src/engine.js';
-import { saveGame, SAVE_KEY, CURRENT_SAVE_KEY } from '../../src/storage.js';
+import { saveGame, SAVE_KEY, CURRENT_SAVE_KEY, BACKUP_KEY, exportGame } from '../../src/storage.js';
 import { ORIGINAL_FILES } from '../../src/missions.js';
 
 test('두 탭의 오래된 진행은 전체 초기화 뒤에도 자동 저장을 덮어쓰지 않음', async ({ page, context }) => {
@@ -77,6 +77,36 @@ test('클립보드가 막혀도 오류 텍스트를 선택해 복사할 수 있�
   await expect(page.locator('#loading-detail')).toBeFocused();
   await expect(page.locator('#copy-startup-error')).toContainText('텍스트 선택됨');
   expect(await page.locator('#loading-detail').evaluate(field => field.selectionEnd - field.selectionStart)).toBeGreaterThan(10);
+});
+
+test('진행 내보내기·가져오기는 검증과 백업 후 다른 저장 위치에서도 복원함', async ({ page }) => {
+  const state = await missionState(1);
+  await seedGame(page, state);
+  const download = page.waitForEvent('download');
+  await page.locator('#export-progress').click();
+  expect((await download).suggestedFilename()).toBe('SecurityLab-progress.json');
+  await page.locator('#reset-all').click(); await page.getByRole('button', { name: '초기화', exact: true }).click();
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  const before = await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY);
+  await page.locator('#import-progress').click();
+  await page.locator('#progress-file').setInputFiles({ name: 'SecurityLab-progress.json', mimeType: 'application/json', buffer: Buffer.from(exportGame(state)) });
+  await expect(page.locator('#confirm-import')).toBeEnabled(); await page.locator('#confirm-import').click();
+  await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+  expect(await page.evaluate(key => localStorage.getItem(key), BACKUP_KEY)).toBe(before);
+  await reloadGame(page); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
+});
+
+test('손상·큰 진행 파일은 가져오지 않고 현재 저장을 유지함', async ({ page }) => {
+  await seedGame(page, await missionState(1)); await page.locator('#hint').click();
+  await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+  const before = await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY);
+  await page.locator('#import-progress').click();
+  for (const [text, message] of [['{broken', '형식'], ['x'.repeat(128 * 1024 + 1), '크기']]) {
+    await page.locator('#progress-file').setInputFiles({ name: 'SecurityLab-progress.json', mimeType: 'application/json', buffer: Buffer.from(text) });
+    await expect(page.locator('#import-message')).toContainText(message);
+    await expect(page.locator('#confirm-import')).toBeDisabled();
+    expect(await page.evaluate(key => localStorage.getItem(key), CURRENT_SAVE_KEY)).toBe(before);
+  }
 });
 
 test('화면 진입·새로고침 시 CSS와 게임 모듈이 실제로 적용됨', async ({ page }) => {

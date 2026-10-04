@@ -106,10 +106,10 @@ export async function createSaveSession(storage, locks = globalThis.navigator?.l
       if (storage.getItem(CURRENT_SAVE_KEY) !== expected || expected === null && storage.getItem(SAVE_KEY) !== legacy) blocked = 'conflict';
       return blocked === 'conflict';
     },
-    save(state, { backup = false } = {}) {
+    save(state, { backup = false, replacePreserved = false } = {}) {
       const game = structuredClone(encodeGame(state));
       const result = queue.then(async () => {
-        if (blocked) throw saveError(blocked, 'Automatic save blocked');
+        if (blocked && !(blocked === 'preserved' && replacePreserved && locks?.request)) throw saveError(blocked, 'Automatic save blocked');
         return locks.request(CURRENT_SAVE_KEY, () => {
           if (session.changed()) throw saveError('conflict', 'Save changed in another tab');
           if (revision >= Number.MAX_SAFE_INTEGER) throw saveError('preserved', 'Save revision limit');
@@ -119,6 +119,7 @@ export async function createSaveSession(storage, locks = globalThis.navigator?.l
           storage.setItem(CURRENT_SAVE_KEY, raw);
           expected = raw;
           revision++;
+          blocked = null;
         });
       });
       queue = result.catch(() => {});
@@ -130,4 +131,16 @@ export async function createSaveSession(storage, locks = globalThis.navigator?.l
 
 export function exportGame(state) {
   return JSON.stringify({ format: 'security-lab-progress', version: 1, game: encodeGame(state) }, null, 2);
+}
+
+export const MAX_IMPORT_BYTES = 128 * 1024;
+export async function importGame(raw) {
+  if (typeof raw !== 'string' || new TextEncoder().encode(raw).length > MAX_IMPORT_BYTES) throw new Error('진행 파일 크기는 128KiB 이하여야 합니다.');
+  let data;
+  try { data = JSON.parse(raw); }
+  catch { throw new Error('게임 진행 JSON 형식이 아닙니다.'); }
+  if (data?.format !== 'security-lab-progress' || data.version !== 1 || Object.keys(data).some(key => !['format', 'version', 'game'].includes(key))) throw new Error('지원하지 않는 진행 파일 형식입니다.');
+  const loaded = await decodeGame(JSON.stringify(data.game));
+  if (loaded.recovered) throw new Error('진행의 단서·순서·완료 조건이 올바르지 않습니다.');
+  return loaded;
 }
