@@ -60,6 +60,13 @@ jobs:
         env:
           GAME_SERVER: dist/SecurityLab --smoke-test
           SECURITYLAB_HEADED: '1'
+      - name: Upload packaged browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-browser-diagnostics-${{ runner.os }}
+          path: test-results/
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: SecurityLab-${{ runner.os }}-${{ runner.arch }}

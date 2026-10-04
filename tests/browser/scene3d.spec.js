@@ -40,8 +40,18 @@ async function capture(page,file) {
 async function start(page) {
   await page.goto('/?view=3d');
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await resume(page);
+}
+async function resume(page) {
+  const before=await diagnostics(page);
   await page.locator('#scene-start').click();
   await expect.poll(async()=> (await diagnostics(page)).pointerLocked).toBe(true);
+  // Xvfb can deliver a cursor-warp delta when native pointer lock begins.
+  // Look back in the intended direction through the same mouse input path;
+  // never assign the camera rotation or move the player for the test.
+  const [x,y,z]=before.position, horizontal=Math.cos(before.pitch);
+  await aim(page,x-Math.sin(before.yaw)*horizontal,y+Math.sin(before.pitch),z-Math.cos(before.yaw)*horizontal);
+  await expect.poll(async()=> (await diagnostics(page)).yaw).toBeCloseTo(before.yaw,2);
 }
 async function openMainDoor(page) {
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_Main');
@@ -65,15 +75,14 @@ async function aim(page,x,y,z) {
 async function closeAndResume(page) {
   await page.locator('#tool-close').click();
   expect((await diagnostics(page)).pointerLocked).toBe(false);
-  await page.locator('#scene-start').click();
-  await expect.poll(async()=> (await diagnostics(page)).pointerLocked).toBe(true);
+  await resume(page);
 }
 
 test('3D actual movement, closed-door collision, hinge rotation, mouse and pause',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed physical navigation uses the primary desktop Chromium project.');
   const errors=[],violations=[];
   page.on('pageerror',e=>errors.push(e.message));
-  await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.cspErrors=(window.cspErrors||[]).concat(e.violatedDirective)));
+  await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.cspErrors=(window.cspErrors||[]).concat({directive:e.violatedDirective,blockedURI:e.blockedURI,sourceFile:e.sourceFile,line:e.lineNumber,sample:e.sample})));
   await start(page);
   const initial=await diagnostics(page);
   expect(initial.position[1]).toBe(1.65); expect(initial.colliders).toBeGreaterThan(25);

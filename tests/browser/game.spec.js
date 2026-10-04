@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+// Keep 2D regressions headless even when Linux 3D input uses an Xvfb window.
+test.use({headless:true});
 import { initialState, progress, runCommand, applyAnswer, applyPort, applyLogin, restoreFile, nextMission } from '../../src/engine.js';
 import { saveGame, SAVE_KEY, CURRENT_SAVE_KEY, BACKUP_KEY, exportGame } from '../../src/storage.js';
 import { ORIGINAL_FILES } from '../../src/missions.js';
