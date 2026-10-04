@@ -52,8 +52,14 @@ jobs:
         shell: pwsh
         run: ./tests/windows_launcher.ps1
       - name: Test packaged Unix executable
-        if: runner.os != 'Windows'
+        if: runner.os == 'macOS'
         run: GAME_SERVER='dist/SecurityLab --smoke-test' npm run check
+      - name: Test packaged Linux executable
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' npm run check
+        env:
+          GAME_SERVER: dist/SecurityLab --smoke-test
+          SECURITYLAB_HEADED: '1'
       - uses: actions/upload-artifact@v4
         with:
           name: SecurityLab-${{ runner.os }}-${{ runner.arch }}

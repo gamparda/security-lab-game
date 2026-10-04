@@ -16,8 +16,12 @@ const chromiumLaunch = {
 };
 export default defineConfig({
   testDir: './tests/browser',
+  // Native pointer lock needs a real display on Linux. Headed runs share that
+  // display, so keep one active browser to avoid stealing focus from 3D input.
+  workers: process.env.SECURITYLAB_HEADED === '1' ? 1 : undefined,
   use: {
-    baseURL: process.env.GAME_URL || 'http://localhost:5173', headless: true, trace: 'retain-on-failure',
+    baseURL: process.env.GAME_URL || 'http://localhost:5173',
+    headless: process.env.SECURITYLAB_HEADED !== '1', trace: 'retain-on-failure',
   },
   webServer: process.env.GAME_URL ? undefined : { command: process.env.GAME_SERVER || (isWindows ? 'python run.py' : 'python3 run.py'), url: 'http://localhost:5173', reuseExistingServer: !process.env.CI },
   projects: [
