@@ -112,6 +112,11 @@ async function walkTo(page,x,z) {
   const d=await diagnostics(page),path=route(d.position,[x,z],d.doors);
   for(const [px,pz] of path.slice(1)) {
     const current=await diagnostics(page),[cx,cy,cz]=current.position;
+    // The route can end with a 10 cm grid connector. Do not take another
+    // full keyboard frame when already standing at the destination: a slow
+    // software-rendered frame can advance 1.3 m before its keyup is observed.
+    // Intermediate corners still use the tighter tolerance below.
+    if(Math.hypot(x-cx,z-cz)<.3)break;
     if(Math.hypot(px-cx,pz-cz)<.08)continue;
     await aim(page,px,cy,pz);
     const axis=Math.abs(px-cx)>Math.abs(pz-cz)?'x':'z';
@@ -219,7 +224,9 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
   await closeAndResume(page);
   // Back to the central aisle, then up to the server-room door.
-  await walkTo(page,-5.3,.1);
+  // Stand comfortably inside interaction reach rather than at its outer
+  // boundary, leaving room for real frame-quantized keyboard movement.
+  await walkTo(page,-5.3,-.6);
   await aim(page,-5.3,1.45,-2);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_ServerRoom');
   await page.keyboard.press('KeyE');
@@ -251,7 +258,7 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await expect(page.locator('#port-8080')).toHaveValue('allow');
   await closeAndResume(page);
   // The records room has its own actual door, independent of the server suite.
-  await walkTo(page,5.3,.1);
+  await walkTo(page,5.3,-.6);
   await aim(page,5.3,1.45,-2);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_RecordsRoom');
   await page.keyboard.press('KeyE');
