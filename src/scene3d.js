@@ -8,7 +8,7 @@ import { observeMission, requestTool } from '/src/labbridge.js';
 import { batchStatic, isSoftwareRenderer, prepareMaterials } from './batch3d.js';
 
 const $ = id => document.getElementById(id);
-const PREPARATION_TIMEOUT = 20000;
+const PREPARATION_TIMEOUT = 60000;
 const MAX_MODEL_BYTES = 256 * 1024 * 1024;
 let renderer, graphicsContext, scene, camera, model, player, interaction;
 let ready = false, firstFrameReady = false, contextLost = false, mode = '2d', toolsOpen = false;
@@ -177,28 +177,38 @@ function rebuildEnvironment() {
   scene.environment = environmentTarget.texture;
   room.dispose(); pmrem.dispose();
 }
-async function readModel(signal, token) {
-  // This fixed local URL never contains game commands or user-provided addresses.
-  const response = await fetch('assets/models/security_lab.glb', { signal });
-  if (!response.ok) throw new Error('모델 파일을 읽을 수 없습니다.');
-  const total = Number(response.headers.get('Content-Length')) || 0;
-  if (total > MAX_MODEL_BYTES) throw new Error('모델 파일 크기가 제한을 초과했습니다.');
-  const reader = response.body.getReader(), chunks = [];
-  let received = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    checkAttempt(token, signal);
-    if (done) break;
-    received += value.byteLength;
-    if (received > MAX_MODEL_BYTES) { await reader.cancel(); throw new Error('모델 파일 크기가 제한을 초과했습니다.'); }
-    chunks.push(value);
-    $('scene-progress').value = total ? Math.min(80, received / total * 80) : 25;
-    $('scene-message').textContent = `실습실을 불러오는 중 · ${(received / 1024 / 1024).toFixed(1)} MB`;
-  }
-  const buffer = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
-  return buffer.buffer;
+async function readModel(controller, token) {
+  const signal = controller.signal;
+  let stallTimer;
+  const activity = () => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => controller.abort(new Error('모델 파일 응답 시간이 초과되었습니다.')), 20000);
+  };
+  activity();
+  try {
+    // This fixed local URL never contains game commands or user-provided addresses.
+    const response = await fetch('assets/models/security_lab.glb', { signal });
+    if (!response.ok) throw new Error('모델 파일을 읽을 수 없습니다.');
+    const total = Number(response.headers.get('Content-Length')) || 0;
+    if (total > MAX_MODEL_BYTES) throw new Error('모델 파일 크기가 제한을 초과했습니다.');
+    const reader = response.body.getReader(), chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      checkAttempt(token, signal);
+      if (done) break;
+      received += value.byteLength;
+      activity();
+      if (received > MAX_MODEL_BYTES) { await reader.cancel(); throw new Error('모델 파일 크기가 제한을 초과했습니다.'); }
+      chunks.push(value);
+      $('scene-progress').value = total ? Math.min(80, received / total * 80) : 25;
+      $('scene-message').textContent = `실습실을 불러오는 중 · ${(received / 1024 / 1024).toFixed(1)} MB`;
+    }
+    const buffer = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
+    return buffer.buffer;
+  } finally { clearTimeout(stallTimer); }
 }
 function installModel(loaded) {
   loaded.updateMatrixWorld(true);
@@ -272,11 +282,11 @@ function loadModel() {
   $('lab-world').dataset.state = 'loading';
   $('lab-world').setAttribute('aria-busy', 'true');
   $('scene-cover').hidden = false;
-  message('실습실 준비 중', '공간과 조사 장비를 불러오고 있습니다.');
+  message('실습실 준비 중', contextLost ? '그래픽 연결 복원을 기다리고 있습니다.' : '공간과 조사 장비를 불러오고 있습니다.');
   $('scene-progress').hidden = false;
   $('scene-progress').value = 0;
   $('scene-start').hidden = true;
-  $('scene-retry').hidden = true;
+  $('scene-retry').hidden = !contextLost;
   attempt.promise = (async () => {
     const timer = setTimeout(() => controller.abort(new Error('준비 시간이 초과되었습니다.')), PREPARATION_TIMEOUT);
     let pendingModel;
@@ -286,7 +296,7 @@ function loadModel() {
         await ensureRenderer(token, signal);
         checkAttempt(token, signal);
         if (!model) {
-          const bytes = await readModel(signal, token);
+          const bytes = await readModel(controller, token);
           $('scene-progress').value = 85;
           $('scene-message').textContent = '장비와 충돌 경계를 준비하고 있습니다.';
           const loaded = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes, new URL('assets/models/', location.href).href);
@@ -295,6 +305,14 @@ function loadModel() {
           installModel(pendingModel);
           pendingModel = undefined;
         }
+        checkAttempt(token, signal);
+        $('scene-progress').value = 95;
+        $('scene-message').textContent = '표면과 조명을 준비하고 있습니다.';
+        // Warm visible shader variants asynchronously before the first draw.
+        // Hidden originals need no programs; clones share the actual GPU data.
+        const warmup = new THREE.Group();
+        scene.traverseVisible(object => { if (object.isMesh) warmup.add(object.clone(false)); });
+        await renderer.compileAsync(warmup, camera, scene);
         checkAttempt(token, signal);
         await renderFirstFrame(token, signal);
       })();

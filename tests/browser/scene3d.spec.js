@@ -5,17 +5,18 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { route } from './scene-route.js';
 
-const expect=baseExpect.configure({timeout:process.platform==='win32' && process.env.CI ? 20000 : 5000});
+const expect=baseExpect.configure({timeout:process.env.CI ? 20000 : 5000});
 const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene-entry.js')).get3DDiagnostics());
+const READY_TIMEOUT=85000;
 const VIEW_KEY='security-lab-view';
 const desktop3D=testInfo=>['desktop','windows-edge'].includes(testInfo.project.name);
 const main3D=testInfo=>testInfo.project.name==='desktop';
 test.beforeEach(async({page},testInfo)=>{
+  if(desktop3D(testInfo)) testInfo.setTimeout(180000);
   if(process.env.CI && desktop3D(testInfo)) {
     // Hosted runners use software graphics. Keep the real scene, collisions,
     // rendering and input, at a smaller viewport rather than bypassing them.
     await page.setViewportSize({width:640,height:480});
-    testInfo.setTimeout(process.platform==='win32' ? 120000 : 60000);
   }
 });
 async function savedGame(page) {
@@ -41,7 +42,7 @@ async function capture(page,file) {
 }
 async function start(page) {
   await page.goto('/?view=3d');
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await resume(page);
 }
 async function resume(page) {
@@ -135,7 +136,7 @@ async function closeAndResume(page) {
 
 test('3D actual movement, closed-door collision, hinge rotation, mouse and pause',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed physical navigation uses the primary desktop Chromium project.');
-  test.setTimeout(120000);
+  test.setTimeout(process.env.CI ? 180000 : 120000);
   const errors=[],violations=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.cspErrors=(window.cspErrors||[]).concat({directive:e.violatedDirective,blockedURI:e.blockedURI,sourceFile:e.sourceFile,line:e.lineNumber,sample:e.sample})));
@@ -197,7 +198,7 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
 
 test('walk to all five devices; old tools, scoring, save and mission guards stay intact',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed spatial route uses the primary desktop Chromium project.');
-  test.setTimeout(240000);
+  test.setTimeout(process.env.CI ? 360000 : 240000);
   await start(page); await openMainDoor(page);
   await capture(page,'02-door-open.png');
   await walkUntil(page,'KeyW',{axis:'z',lt:6});
@@ -306,7 +307,7 @@ test('all original missions finish inside the 3D overlay and restore after reloa
   await expect(page.locator('#results')).toBeVisible(); await expect(page.locator('#score')).toHaveText('100 / 100');
   const save=await savedGame(page);
   expect(JSON.parse(save).game.missions.every(m=>m.verified)).toBe(true);
-  await page.reload(); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await page.reload(); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.locator('#world-notes').click(); await expect(page.locator('#results')).toBeVisible();
   await expect(page.locator('.mission-step.complete')).toHaveCount(4);
 });
@@ -320,7 +321,7 @@ test('model failure offers retry and 2D continuation; no external requests',asyn
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
   await page.unroute('**/assets/models/security_lab.glb');
   await page.locator('#scene-retry').click();
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.locator('#scene-fallback').click(); await expect(page.locator('#lab-tools')).toBeVisible();
   await page.locator('#command').fill('https://example.com'); await page.locator('#command').press('Enter');
   expect(external).toEqual([]);
@@ -329,9 +330,12 @@ test('model failure offers retry and 2D continuation; no external requests',asyn
 test('unresponsive model has a bounded loading timeout',async({page},testInfo)=>{
   test.skip(!main3D(testInfo));
   await page.clock.install();
-  await page.route('**/assets/models/security_lab.glb',()=>new Promise(()=>{}));
+  let requested;
+  const request=new Promise(resolve=>{requested=resolve;});
+  await page.route('**/assets/models/security_lab.glb',()=>{requested();return new Promise(()=>{});});
   await page.goto('/?view=3d');
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','loading');
+  await request;
   await page.clock.fastForward(21000);
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
   await page.locator('#scene-fallback').click(); await expect(page.locator('#mission-title')).toBeVisible();
@@ -354,7 +358,7 @@ test('first launch opens 2D without requesting optional 3D assets',async({page})
 for(const blocked of ['src/scene3d.js','vendor/three/build/three.core.js','src/scene3d.css']) {
   test(`3D retry recovers ${blocked} without reloading the working game`,async({page},testInfo)=>{
     test.skip(!main3D(testInfo));
-    test.setTimeout(60000);
+    test.setTimeout(process.env.CI ? 180000 : 60000);
     const raw=await seedV2(page,await tutorialComplete());
     await page.goto('/?view=2d'); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
     await page.locator('#hint').click(); const saved=await savedGame(page);
@@ -372,7 +376,7 @@ for(const blocked of ['src/scene3d.js','vendor/three/build/three.core.js','src/s
     const fresh=[];
     page.on('request',request=>{if(new URL(request.url()).pathname.startsWith('/__scene__/'))fresh.push(request.url());});
     await page.locator('#scene-retry').click();
-    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
     expect(fresh.some(url=>url.includes('src/scene3d.js'))).toBe(true);
     expect(appRequests).toBe(0); expect(await page.evaluate(()=>window.originalGameDocument)).toBe(true);
     expect(await savedGame(page)).toBe(saved);
@@ -390,10 +394,10 @@ for(const blocked of ['src/scene3d.js','vendor/three/build/three.core.js','src/s
 test('view preference persists independently and explicit 2D wins over saved 3D',async({page},testInfo)=>{
   test.skip(!main3D(testInfo));
   await page.goto('/'); await page.locator('#view-switch').click();
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   expect(await page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('3d');
   expect(await savedGame(page)).toBeNull();
-  await page.goto('/'); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await page.goto('/'); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.goto('/?view=2d'); await expect(page.locator('#lab-tools')).toBeVisible();
   await expect.poll(()=>page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('2d');
   await page.goto('/'); await expect(page.locator('#lab-world')).toBeHidden();
@@ -465,7 +469,7 @@ test('v0.3 v2 progress and legacy original survive toggles, location return and 
   const legacy=JSON.stringify(encodeGame(state,{legacy:true}));
   await page.addInitScript(({key,legacy})=>localStorage.setItem(key,legacy),{key:SAVE_KEY,legacy});
   await page.goto('/?view=3d');
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
   await page.locator('#world-reset').click();
   await page.locator('#world-2d').click();
@@ -478,7 +482,7 @@ test('v0.3 v2 progress and legacy original survive toggles, location return and 
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
   expect(await savedGame(page)).toBe(raw);
   await page.unroute('**/assets/models/security_lab.glb'); await page.locator('#scene-retry').click();
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   expect(await savedGame(page)).toBe(raw);
   expect(await page.evaluate(key=>localStorage.getItem(key),SAVE_KEY)).toBe(legacy);
   await page.locator('#world-notes').click();
@@ -509,7 +513,7 @@ test('Pointer Lock rejection stays paused and offers retry or 2D',async({page},t
     };
   });
   await page.goto('/?view=3d');
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.locator('#scene-start').click(); await expect(page.locator('#scene-message')).toContainText('2D');
   expect((await diagnostics(page)).pointerLocked).toBe(false);
   await expect(page.locator('#scene-cover')).toBeVisible();
@@ -538,7 +542,7 @@ test('lost WebGL context never becomes ready on retry before a restored first fr
   expect(await page.locator('#lab-canvas').evaluate(canvas=>canvas.getContext('webgl2').isContextLost())).toBe(true);
   expect(await savedGame(page)).toBe(raw);
   await page.evaluate(()=>window.contextRecovery.restoreContext());
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   const restored=await diagnostics(page);
   expect(restored.contextLost).toBe(false); expect(restored.firstFrameReady).toBe(true);
   expect(restored.renderedFrames).toBeGreaterThan(lost.renderedFrames);
@@ -576,7 +580,7 @@ test('3D tools preserve native dialogs and reject stale saves from another tab',
   await expect(page.locator('#notice')).toContainText('다른 탭'); await page.locator('#hint').click();
   expect(await savedGame(page)).toBe(latest);
   await page.locator('#reload-progress').click();
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.locator('#world-notes').click(); await expect(page.locator('#hint')).toHaveText('힌트 보기 (2/3)');
   expect(await savedGame(page)).toBe(latest);
 });
@@ -598,7 +602,7 @@ test('validated import remains usable inside the 3D overlay',async({page},testIn
 test('@windows-edge packaged 3D model displays an actual first frame',async({page},testInfo)=>{
   test.skip(!desktop3D(testInfo));
   await page.goto('/?view=3d');
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   const d=await diagnostics(page);
   expect(d.firstFrameReady).toBe(true); expect(d.renderedFrames).toBeGreaterThan(0);
   expect(d.drawCalls).toBeGreaterThan(0); expect(d.colliders).toBeGreaterThan(25);

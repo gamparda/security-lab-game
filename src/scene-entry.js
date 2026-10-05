@@ -62,22 +62,27 @@ export async function show3D() {
   // and its save session stay in this document.
   const prefix = retryGraph ? `__scene__/${Date.now().toString(36)}-${++graphAttempt}/` : '';
   try {
-    await Promise.race([
+    const module = await Promise.race([
       (async () => {
         const [module] = await Promise.all([
           sceneModule ? Promise.resolve(sceneModule) : prefix ? import('/' + prefix + 'src/scene3d.js') : import('./scene3d.js'),
           loadStyles(current.signal, prefix),
         ]);
         if (token !== attempt || current.signal.aborted) return;
-        sceneModule = module; retryGraph = false;
-        await module.init3D();
-        if (token !== attempt || current.signal.aborted) return;
-        const ready = module.get3DDiagnostics();
-        if (!ready.ready || !ready.firstFrameReady) throw new Error('3D 화면 준비를 완료하지 못했습니다.');
-        $('lab-world').dataset.state = 'ready'; $('lab-world').setAttribute('aria-busy', 'false');
+        return module;
       })(),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('3D 준비 시간이 초과되었습니다.')), 20000); }),
     ]);
+    clearTimeout(timer);
+    if (token !== attempt || current.signal.aborted) return;
+    sceneModule = module; retryGraph = false;
+    // The graph has its own 20 s deadline. The large model owns its separate
+    // bounded preparation and network-stall deadlines after the graph is ready.
+    await module.init3D();
+    if (token !== attempt || current.signal.aborted) return;
+    const ready = module.get3DDiagnostics();
+    if (!ready.ready || !ready.firstFrameReady) throw new Error('3D 화면 준비를 완료하지 못했습니다.');
+    $('lab-world').dataset.state = 'ready'; $('lab-world').setAttribute('aria-busy', 'false');
   } catch (error) {
     if (token !== attempt || mode !== '3d') return;
     current.abort();
