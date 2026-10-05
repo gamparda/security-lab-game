@@ -86,13 +86,13 @@
       <aside class="mission-hud"><p id="hud-mission" class="eyebrow">CASE 001</p><h2 id="hud-title">조사 준비</h2><p id="hud-objective"></p><p id="hud-stage" class="hud-stage"></p></aside>
       <span id="crosshair" class="crosshair" aria-hidden="true" hidden></span>
       <p id="interaction-prompt" class="interaction-prompt" role="status" hidden></p>
-      <div class="world-footer"><span><kbd>W A S D</kbd> 이동 &nbsp; <kbd>SHIFT</kbd> 달리기 &nbsp; <kbd>CTRL</kbd> 앉기 &nbsp; <kbd>SPACE</kbd> 점프 &nbsp; <kbd>E</kbd> 조사 &nbsp; <kbd>ESC</kbd> 일시정지</span><span id="world-location">SECURITY OPERATIONS / TRAINING FACILITY</span></div>
+      <div class="world-footer"><span><kbd>W A S D</kbd> 이동 &nbsp; <kbd>SHIFT</kbd> 달리기 &nbsp; <kbd>CTRL / C</kbd> 앉기 &nbsp; <kbd>SPACE</kbd> 점프 &nbsp; <kbd>E</kbd> 조사 &nbsp; <kbd>ESC</kbd> 일시정지</span><span id="world-location">SECURITY OPERATIONS / TRAINING FACILITY</span></div>
       <div id="scene-cover" class="scene-cover"><div class="scene-card">
         <p class="eyebrow">SECURITY LAB / INTERACTIVE TRAINING</p><h2 id="scene-title">실습실 준비 중</h2><p id="scene-message" role="status">공간과 조사 장비를 불러오고 있습니다.</p>
         <progress id="scene-progress" max="100" value="0" aria-label="3D 공간 로딩"></progress>
         <div class="graphics-options"><label>3D 화질 <select id="render-preset"><option value="native">Native · 100%</option><option value="ultra">Ultra Quality · 85%</option><option value="quality" selected>Quality · 75%</option><option value="balanced">Balanced · 60%</option><option value="performance">Performance · 50%</option></select></label><label><input id="temporal-aa" type="checkbox" checked> 정지 화면 안티앨리어싱</label></div>
         <div class="scene-actions"><button id="scene-start" class="primary" hidden>탐색 시작 →</button><button id="scene-retry" hidden>3D 다시 불러오기</button><button id="scene-fallback">2D 도구 화면</button></div>
-        <p class="scene-note">키보드와 마우스 필요 · 실제 서버를 공격하지 않는 로컬 실습<br>도구를 닫은 뒤 탐색 시작을 눌러 다시 이동하세요.</p>
+        <p class="scene-note">탐색 시작 시 전체화면 전환 · Esc로 일시정지<br>Ctrl 이동을 위해 키보드 보호를 허용하세요. 창 모드에서는 C로 앉을 수 있습니다.</p>
       </div></div>
       <pre id="graphics-debug" class="graphics-debug" hidden></pre>
     </section>

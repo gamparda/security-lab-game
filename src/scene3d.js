@@ -20,6 +20,17 @@ let frames = 0, frameMs = 0, fps = 0, noticeTimer, mission = null, currentTab = 
 let softwareRenderer = false, redraw = true, environmentTarget;
 let city, visibility, upscaler, preset='quality', optimization=true, debug=false, gpuName=null;
 let loadStarted=0, loadTimeMs=0, glbLoadMs=0, renderTimeMs=0, averageFrameMs=0;
+let keyboardCaptured=false,keyboardCapturePromise;
+function releaseKeyboard() {navigator.keyboard?.unlock?.();keyboardCaptured=false;}
+function captureKeyboard() {
+  if(keyboardCaptured||keyboardCapturePromise||!document.fullscreenElement||!player?.controls.isLocked||!navigator.keyboard?.lock)return;
+  const expected=player;
+  keyboardCapturePromise=navigator.keyboard.lock(['KeyW','KeyA','KeyS','KeyD']).then(()=>{
+    if(player!==expected||!expected.controls.isLocked||!document.fullscreenElement||toolsOpen||mode!=='3d')releaseKeyboard();
+    else keyboardCaptured=true;
+  }).catch(()=>{keyboardCaptured=false;$('world-location').textContent='키보드 보호를 허용하지 않은 경우 C로 앉으세요.';})
+    .finally(()=>{keyboardCapturePromise=undefined;});
+}
 
 function message(title, text) {
   $('scene-title').textContent = title;
@@ -283,8 +294,11 @@ async function installModel(gltf) {
     $('scene-cover').hidden = true;
     $('crosshair').hidden = false;
     previousTime = performance.now();
+    // Three dispatches its lock event before setting controls.isLocked.
+    queueMicrotask(captureKeyboard);
   });
   player.controls.addEventListener('unlock', () => {
+    releaseKeyboard();
     $('crosshair').hidden = true;
     $('interaction-prompt').hidden = true;
     if (mode === '3d' && !toolsOpen) { $('scene-cover').hidden = false; pauseMessage(); }
@@ -433,7 +447,15 @@ function closeTool() {
 }
 function lock() {
   if (!ready || !healthyContext() || toolsOpen || mode !== '3d' || nativeDialogOpen()) return;
+  if(player.controls.isLocked)return;
+  // Pointer lock is requested first in the same user gesture. Fullscreen is
+  // required for Chrome to deliver Ctrl+W to the game rather than close it.
   player.controls.lock();
+  if(navigator.keyboard?.lock&&document.fullscreenEnabled&&!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().then(captureKeyboard).catch(()=>{
+      $('world-location').textContent='창 모드에서는 C로 앉으세요. Ctrl 이동은 전체화면에서 지원합니다.';
+    });
+  } else captureKeyboard();
 }
 function animate(time) {
   requestAnimationFrame(animate);
@@ -483,6 +505,8 @@ export function get3DDiagnostics() {
     crouched: player?.crouched ?? false, grounded: player?.grounded ?? true,
     feetY: player?.feetY ?? 0, bodyHeight: player?.height ?? 1.8,
     verticalVelocity: player?.verticalVelocity ?? 0,
+    jumpCount: player?.jumpCount ?? 0, jumpPeak: player?.jumpPeak ?? 0,
+    fullscreen: Boolean(document.fullscreenElement), keyboardCaptured,
     yaw: direction ? Math.atan2(-direction.x, -direction.z) : 0, pitch: direction ? Math.asin(direction.y) : 0,
     target: interaction?.target?.name ?? null,
     doors: interaction?.doors.map(door => ({ name: door.object.name, angle: door.angle, target: door.target, pivot: door.object.position.toArray() })) ?? [],
@@ -508,6 +532,9 @@ export function init3D() {
       if (toolsOpen) $('lab-tools').setAttribute('aria-busy', String(busy()));
     });
     $('scene-start').addEventListener('click', lock);
+    document.addEventListener('fullscreenchange',()=>{
+      if(document.fullscreenElement)captureKeyboard();else {releaseKeyboard();player?.controls.unlock();}
+    });
     try{const value=localStorage.getItem('security-lab-render-preset');if(value in RENDER_PRESETS)preset=value;}catch{}
     $('render-preset').value=preset;
     $('render-preset').addEventListener('change',()=>{preset=$('render-preset').value;try{localStorage.setItem('security-lab-render-preset',preset);}catch{}resize();});

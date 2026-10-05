@@ -6,6 +6,14 @@ Space starts one grounded jump, with gravity and landing; holding Space does
 not auto-repeat. Inputs are accepted only during pointer lock and cleared on
 blur/unlock. Pause, tool dialogs and return-to-entry retain their existing roles.
 
+3D entry requests fullscreen and keyboard lock for WASD, so physical Ctrl+W
+does not close the Chrome tab while crouch-walking. Esc remains uncaptured;
+pause/tool entry releases keyboard lock. Accept Chrome's keyboard permission
+when prompted. C is an alternate crouch key in window mode or if permission
+is denied. The Chrome test grants this permission explicitly and verifies
+fullscreen, capture, and release. Jump count and peak are latched for testing
+short jumps on slow CI rendering without depending on a single airborne frame.
+
 Collision uses explicit feet/height for horizontal walls, moving door sweeps,
 vertical head impacts and landing on box tops. Physics runs in bounded substeps
 with the existing 100ms long-frame cap. No collider or door pivot was moved.

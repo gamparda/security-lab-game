@@ -13,7 +13,7 @@ export class Player {
     this.reset();
     this.down = event => {
       if (!this.controls.isLocked) return;
-      if (['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','ControlLeft','ControlRight','Space'].includes(event.code)) {
+      if (['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','ControlLeft','ControlRight','KeyC','Space'].includes(event.code)) {
         event.preventDefault(); this.keys.add(event.code);
         if(event.code==='Space'&&!event.repeat&&this.grounded)this.jumpQueued=true;
       }
@@ -30,6 +30,7 @@ export class Player {
     this.camera.rotation.set(0,0,0); this.keys.clear(); this.movementSeconds = 0;
     this.feetY=0;this.height=STANDING_HEIGHT;this.eyeHeight=STANDING_EYE;
     this.verticalVelocity=0;this.grounded=true;this.crouched=false;this.jumpQueued=false;
+    this.jumpCount=0;this.jumpPeak=0;
   }
   get body(){return {feetY:this.feetY,height:this.height};}
   update(dt, dynamicBoxes = []) {
@@ -42,12 +43,12 @@ export class Player {
     this.right.crossVectors(this.forward, this.camera.up).normalize();
     const movementSeconds = Math.min(.1, Math.max(0,dt));
     const boxes=[...this.boxes,...dynamicBoxes];
-    const wantsCrouch=this.keys.has('ControlLeft')||this.keys.has('ControlRight');
+    const wantsCrouch=this.keys.has('ControlLeft')||this.keys.has('ControlRight')||this.keys.has('KeyC');
     const standingBody={x:this.camera.position.x,z:this.camera.position.z,feetY:this.feetY,height:STANDING_HEIGHT};
     const cannotStand=this.crouched&&!wantsCrouch&&boxes.some(box=>overlaps(standingBody,box));
     this.crouched=wantsCrouch || (this.crouched&&cannotStand);
     this.height=this.crouched?CROUCH_HEIGHT:STANDING_HEIGHT;
-    if(this.jumpQueued&&this.grounded){this.verticalVelocity=JUMP_SPEED;this.grounded=false;}
+    if(this.jumpQueued&&this.grounded){this.verticalVelocity=JUMP_SPEED;this.grounded=false;this.jumpCount++;this.jumpStart=this.feetY;this.jumpPeak=0;}
     this.jumpQueued=false;
     const speed=this.crouched?1.35:this.keys.has('ShiftLeft')||this.keys.has('ShiftRight')?4.2:2.6;
     if(length)this.movementSeconds+=movementSeconds;
@@ -63,6 +64,7 @@ export class Player {
       this.verticalVelocity-=GRAVITY*step;
       const vertical=moveVertically(this.camera.position,dy,boxes,this.body);
       this.feetY=vertical.feetY;this.grounded=vertical.grounded;
+      if(this.jumpCount)this.jumpPeak=Math.max(this.jumpPeak,this.feetY-this.jumpStart);
       if(vertical.blocked)this.verticalVelocity=0;
     }
     const targetEye=this.crouched?CROUCH_EYE:STANDING_EYE;
