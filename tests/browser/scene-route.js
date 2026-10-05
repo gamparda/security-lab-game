@@ -21,7 +21,7 @@ doc.nodes.forEach((n,i)=>{
   }
   staticBoxes.push(box.applyMatrix4(world(i)));
 });
-export function route(position,destination,doors) {
+export function routeColliders(doors) {
   const boxes=[...staticBoxes];
   for(const d of doors) {
     const n=doc.nodes.find(n=>n.name===d.name),b=n.extras.collisionBounds;
@@ -29,6 +29,10 @@ export function route(position,destination,doors) {
     const m=new Matrix4().compose(new Vector3(...d.pivot),new Quaternion().setFromAxisAngle(new Vector3(0,1,0),d.angle),new Vector3(1,1,1));
     boxes.push(box.applyMatrix4(m));
   }
+  return boxes;
+}
+export function route(position,destination,doors) {
+  const boxes=routeColliders(doors);
   const step=.1,key=(x,z)=>`${Math.round(x/step)},${Math.round(z/step)}`;
   const point=k=>k.split(',').map(Number).map(n=>n*step),freeCache=new Map();
   const free=k=>{
@@ -65,7 +69,27 @@ export function route(position,destination,doors) {
       const turns=path.filter((p,i)=>i===0||i===path.length-1||
         Math.sign(p[0]-path[i-1][0])!==Math.sign(path[i+1][0]-p[0])||
         Math.sign(p[1]-path[i-1][1])!==Math.sign(path[i+1][1]-p[1]));
-      return [[origin.x,origin.z],...turns];
+      // A grid staircase is useful for finding a route, but humans walk the
+      // clear diagonals instead of stopping at each 10 cm corner. Remove a
+      // waypoint only when the entire segment is clear for the real player.
+      // Keep the grid's extra clearance after the exact starting position.
+      const waypoints=[[origin.x,origin.z],...turns],smooth=[waypoints[0]];
+      const clear=(a,b,radius)=>{
+        const dx=b[0]-a[0],dz=b[1]-a[1],samples=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.025));
+        const moved=moveWithCollisions({x:a[0],z:a[1]},dx,dz,boxes);
+        if(Math.hypot(moved.x-b[0],moved.z-b[1])>1e-5)return false;
+        for(let sample=1;sample<=samples;sample++) {
+          const p={x:a[0]+dx*sample/samples,z:a[1]+dz*sample/samples};
+          if(boxes.some(box=>overlaps(p,box,radius)))return false;
+        }
+        return true;
+      };
+      for(let i=0;i<waypoints.length-1;) {
+        let next=waypoints.length-1;
+        while(next>i+1&&!clear(waypoints[i],waypoints[next],i===0?.31:.36))next--;
+        smooth.push(waypoints[next]);i=next;
+      }
+      return smooth;
     }
     const [x,z]=u.split(',').map(Number);
     for(const [dx,dz] of [[0,-1],[-1,0],[1,0],[0,1]]) {

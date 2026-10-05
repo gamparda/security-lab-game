@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { Matrix4, Quaternion, Vector3, Group, Mesh, BoxGeometry, MeshStandardMaterial, MeshPhysicalMaterial } from '../vendor/three/build/three.module.js';
 import { MeshoptDecoder } from '../vendor/three/examples/jsm/libs/meshopt_decoder.module.js';
 import { batchStatic, isSoftwareRenderer, prepareMaterials } from '../src/batch3d.js';
-import { route } from './browser/scene-route.js';
+import { route, routeColliders } from './browser/scene-route.js';
 import { overlaps, moveWithCollisions } from '../src/collision.js';
 const wall={min:{x:-2,y:0,z:-.06},max:{x:2,y:3,z:.06}};
 test('player cannot tunnel through narrow walls, even with a long move',()=>{
@@ -115,6 +115,24 @@ test('physical route connects a safe player position inside the grid clearance m
   assert.deepEqual(path.at(-1),[-5.300000000000001,.1]);
   assert.ok(path.length>2);
   assert.throws(()=>route(position,[-8,-5],doors),/obstructed/);
+});
+test('real lab routes remove tiny grid turns while every shortcut remains physically walkable',()=>{
+  const doors=gltf.nodes.filter(n=>n.extras?.interaction==='door').map(n=>({name:n.name,pivot:n.translation,angle:n.extras.openAngleDegrees*Math.PI/180}));
+  const boxes=routeColliders(doors);
+  // Actual software-rendered positions from the failing multi-device walk.
+  for(const [origin,destination] of [
+    [[-3.5844023,1.65,3.27903565],[-5.3,-.6]],
+    [[-7.1,1.65,-3.5],[2.4,.1]],
+    [[5.8,1.65,-.39],[6.2,-7]],
+  ]) {
+    const path=route(origin,destination,doors);
+    assert.ok(path.length<=8,'navigate clear aisles without a succession of 10 cm stops');
+    for(let i=1;i<path.length;i++) {
+      const [x,z]=path[i-1],[tx,tz]=path[i];
+      const moved=moveWithCollisions({x,z},tx-x,tz-z,boxes);
+      assert.ok(Math.hypot(moved.x-tx,moved.z-tz)<1e-5,'shortcuts must never cut through furniture, walls or door leaves');
+    }
+  }
 });
 test('closed main door blocks frame-quantized walking at 60 FPS and dt 0.1',()=>{
   const door=gltf.nodes.find(n=>n.name==='DOOR_Main');
