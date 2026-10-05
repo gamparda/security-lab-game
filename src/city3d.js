@@ -48,9 +48,12 @@ export function refineGlass(model,cityEnvironment) {
  for(const m of materials)if(m.transmission>0||/glass/i.test(m.name)){
   if(!m.isMeshPhysicalMaterial)continue;
   const etched=/etch/i.test(m.name);
+  // Visibility through glass and physical interaction through a pane are
+  // separate decisions. Keep the original interaction barrier unchanged.
+  const interactionBarrier=m.userData.interactionOpaque??(!m.transparent||m.opacity>.5);
   m.transmission=0;m.transparent=true;m.opacity=etched?.25:.065;m.depthWrite=false;
   m.roughness=etched?.34:.09;m.metalness=.05;m.ior=1.5;m.clearcoat=.4;m.clearcoatRoughness=.08;
-  m.userData.interactionOpaque=false;m.userData.glass=true;
+  m.userData.interactionOpaque=interactionBarrier;m.userData.visibilityOpaque=false;m.userData.glass=true;
   if(cityEnvironment){m.envMap=cityEnvironment;m.envMapIntensity=.25;}
   m.onBeforeCompile=shader=>{
    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 glassPosition;').replace('#include <begin_vertex>','#include <begin_vertex>\nglassPosition=position;');

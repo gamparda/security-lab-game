@@ -126,7 +126,8 @@ test('glass remains see-through on every backend and never acts as an opaque occ
   const positions=mesh.geometry.attributes.position.array.slice();
   refineGlass(root,null);
   assert.equal(glass.transmission,0);assert.equal(glass.transparent,true);
-  assert.equal(glass.userData.interactionOpaque,false);
+  assert.equal(glass.userData.visibilityOpaque,false);
+  assert.equal(glass.userData.interactionOpaque,true);
   assert.deepEqual(mesh.geometry.attributes.position.array,positions);
 });
 test('physical route connects a safe player position inside the grid clearance margin',()=>{
