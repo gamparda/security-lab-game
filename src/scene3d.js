@@ -163,7 +163,7 @@ async function ensureRenderer(token, signal) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !softwareRenderer;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;
   scene = new THREE.Scene();
@@ -178,7 +178,7 @@ async function ensureRenderer(token, signal) {
   light.target.position.set(0, 0, 0);
   // Furniture is stationary. Bake this one practical shadow map at install/
   // context restoration; moving glass doors are deliberately excluded.
-  light.castShadow=true;light.shadow.mapSize.set(2048,2048);
+  light.castShadow=!softwareRenderer;light.shadow.mapSize.set(2048,2048);
   Object.assign(light.shadow.camera,{left:-15,right:15,top:13,bottom:-13,near:.1,far:35});
   light.shadow.bias=-.00015;light.shadow.normalBias=.025;
   scene.add(light, light.target);
@@ -304,7 +304,7 @@ async function renderFirstFrame(token, signal) {
         // The one-time shadow bake must see furniture in every zone, including
         // objects outside the player's initial view. Normal culling resumes
         // on the next frame; subsequent renders reuse the cached shadow map.
-        visibility?.update(camera,innerHeight*RENDER_PRESETS[preset],optimization&&!renderer.shadowMap.needsUpdate);
+        visibility?.update(camera,innerHeight*RENDER_PRESETS[preset],optimization&&!(renderer.shadowMap.enabled&&renderer.shadowMap.needsUpdate));
         upscaler.render(scene, camera,true);
         if (!healthyContext() || renderer.info.render.calls === 0) throw new Error('3D 첫 화면을 표시하지 못했습니다.');
         renderedFrames++;

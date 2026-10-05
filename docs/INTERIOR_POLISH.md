@@ -23,6 +23,7 @@ at install/context recovery, before visibility culling. It does not update
 each frame and excludes moving doors. Static floor contact AO has its own
 UV set, separate from the repeating carpet material. Full dynamic shadows,
 screen-space GI and real-time monitor area lighting are not implemented.
+Software rasterizers retain baked floor AO and skip the hardware shadow map.
 
 Single, dual, ultrawide and laptop desk variants reuse assembly meshes.
 Existing scanned stationery, ergonomic chairs, under-desk pedestals and

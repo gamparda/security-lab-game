@@ -29,6 +29,9 @@ def snapshot():
  return {o.name:{'matrix':[list(r) for r in o.matrix_world],'mesh':hashlib.sha256(o.data.name.encode()+b''.join(np.array(v.co,dtype=np.float32).tobytes() for v in o.data.vertices)).hexdigest() if o.type=='MESH' else None,
    'props':repr(dict(o.items()))} for o in SCENE.objects if o.name.startswith(('INTERACT_','DOOR_','COLLIDER_','SPAWN_'))}
 before=snapshot()
+for name in ['CORP_Wall_Poster_Response','CORP_Wall_Poster_Schedule']:
+ o=bpy.data.objects[name];o.data=o.data.copy()
+ for loop in o.data.uv_layers.active.data:loop.uv.x=1-loop.uv.x
 
 def shader(m):return next(n for n in m.node_tree.nodes if n.type=='BSDF_PRINCIPLED')
 def enum(o,p,v):
@@ -332,7 +335,7 @@ for j,c in enumerate([-.43,-.05,.33]):
  for k in range(5):board.box((11.824,-2.05+c,2.17-k*.074),(.001,.25,.012),bindermats[j])
 board.create('IP05_Change_Control_And_Response_Board',bevel=.002)
 for y,t in [(-2.48,'RESPONSE'),(-2.10,'CHANGES'),(-1.72,'ON CALL')]:
- label('IP05_Board_Title_'+t,t,(11.820,y,2.315),.039,mat=M['Dark'],rotation=(math.pi/2,0,math.pi/2),center=True)
+ label('IP05_Board_Title_'+t,t,(11.820,y,2.315),.039,mat=M['Dark'],rotation=(math.pi/2,0,-math.pi/2),center=True)
 
 # Ceiling service access, trim housings and exit-side thermostat, all outside aisles.
 ceil=Mesh()
