@@ -25,9 +25,9 @@ Windows 10/11 x64에서 EXE를 실행한다. Python·Node.js·Blender 설치는 
 
 ## 모델과 개발
 
-Blender로 제작한 24 × 23m 실습실과 약 4.16MB의 GLB, Three.js를 EXE에 포함한다. 실행 중 외부 다운로드는 없다. 학교 PC의 성능과 교육 효과는 추가 검증이 필요하다.
+Corporate 04의 24 × 23m 실습실(업무석 25 + SOC 관리자석 1), 6개 서버랙과 2개 네트워크 벤치를 사용한다. 약 184.6MB GLB에 697만 삼각형과 원본 해상도의 PBR 이미지를 포함하며, 고품질 PC 환경을 우선한다. 낮은 사양의 PC에서는 2D 도구 화면을 사용할 수 있다. 실행 중 외부 다운로드는 없다.
 
-모델 제작: `blender --background --python scripts/build_security_lab.py -- assets/models/security_lab.glb Security_Lab_Source.blend`.
+모델 및 Blender 원본은 Git LFS로 관리한다. 복제 후 `git lfs install`과 `git lfs pull`을 실행한다. Windows 빌드와 CI도 LFS를 내려받는다. 재내보내기 절차는 [Corporate 통합](CORPORATE_INTEGRATION.md)에 있다. 기존 `build_security_lab.py`는 최초 프로토타입 제작용이다.
 
 소스 실행: `python run.py`. Python과 Node 서버는 시작 시 파일을 캐시하므로 수정 뒤 다시 시작한다.
 

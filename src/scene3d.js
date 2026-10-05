@@ -1,5 +1,7 @@
 import * as THREE from '../vendor/three/build/three.module.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../vendor/three/examples/jsm/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from '../vendor/three/examples/jsm/environments/RoomEnvironment.js';
 import { Player } from './player3d.js';
 import { Interaction } from './interaction3d.js';
 import { observeMission, requestTool } from '/src/labbridge.js';
@@ -7,6 +9,7 @@ import { batchStatic } from './batch3d.js';
 
 const $ = id => document.getElementById(id);
 const PREPARATION_TIMEOUT = 20000;
+const MAX_MODEL_BYTES = 256 * 1024 * 1024;
 let renderer, graphicsContext, scene, camera, model, player, interaction;
 let ready = false, firstFrameReady = false, contextLost = false, mode = '2d', toolsOpen = false;
 let initialized = false, generation = 0, preparation, previousTime = 0, renderedFrames = 0;
@@ -151,7 +154,11 @@ async function ensureRenderer(token, signal) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
   renderer.shadowMap.enabled = false;
+  const room = new RoomEnvironment(), pmrem = new THREE.PMREMGenerator(renderer);
   scene = new THREE.Scene();
+  scene.environment = pmrem.fromScene(room, .04).texture;
+  scene.environmentIntensity = .45;
+  room.dispose(); pmrem.dispose();
   scene.background = new THREE.Color('#20333e');
   camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, .05, 70);
   scene.add(new THREE.HemisphereLight(0xd3e8f5, 0x65737b, 2.0));
@@ -167,7 +174,7 @@ async function readModel(signal, token) {
   const response = await fetch('assets/models/security_lab.glb', { signal });
   if (!response.ok) throw new Error('모델 파일을 읽을 수 없습니다.');
   const total = Number(response.headers.get('Content-Length')) || 0;
-  if (total > 32 * 1024 * 1024) throw new Error('모델 파일 크기가 제한을 초과했습니다.');
+  if (total > MAX_MODEL_BYTES) throw new Error('모델 파일 크기가 제한을 초과했습니다.');
   const reader = response.body.getReader(), chunks = [];
   let received = 0;
   while (true) {
@@ -175,7 +182,7 @@ async function readModel(signal, token) {
     checkAttempt(token, signal);
     if (done) break;
     received += value.byteLength;
-    if (received > 32 * 1024 * 1024) { await reader.cancel(); throw new Error('모델 파일 크기가 제한을 초과했습니다.'); }
+    if (received > MAX_MODEL_BYTES) { await reader.cancel(); throw new Error('모델 파일 크기가 제한을 초과했습니다.'); }
     chunks.push(value);
     $('scene-progress').value = total ? Math.min(80, received / total * 80) : 25;
     $('scene-message').textContent = `실습실을 불러오는 중 · ${(received / 1024 / 1024).toFixed(1)} MB`;
@@ -193,7 +200,7 @@ function installModel(loaded) {
     if (object.isMesh && !object.name.startsWith('COLLIDER_')) {
       object.castShadow = false;
       object.receiveShadow = false;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material.map) material.map.anisotropy = 1;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material.map) material.map.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     }
   });
   const spawnObject = loaded.getObjectByName('SPAWN_Player');
@@ -272,7 +279,7 @@ function loadModel() {
           const bytes = await readModel(signal, token);
           $('scene-progress').value = 85;
           $('scene-message').textContent = '장비와 충돌 경계를 준비하고 있습니다.';
-          const loaded = await new GLTFLoader().parseAsync(bytes, new URL('assets/models/', location.href).href);
+          const loaded = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes, new URL('assets/models/', location.href).href);
           if (signal.aborted || token !== generation || mode !== '3d') { clearResources(loaded.scene); checkAttempt(token, signal); }
           pendingModel = loaded.scene;
           installModel(pendingModel);

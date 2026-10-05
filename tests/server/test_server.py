@@ -145,7 +145,8 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(headers['Content-Security-Policy'], policy + "; frame-ancestors 'none'")
         self.assertIn("'sha256-" + module.STARTUP_HASH + "'", policy)
         self.assertNotIn('unsafe-inline', policy)
-        self.assertNotIn('unsafe-eval', policy)
+        self.assertNotIn("'unsafe-eval'", policy)
+        self.assertIn("'wasm-unsafe-eval'", policy)
 
     def test_private_files_and_traversal_denied(self):
         for path in ['/.git/config', '/README.md', '/run.py', '/src/', '/%2e%2e/index.html', '/src/../index.html',
@@ -352,7 +353,7 @@ class NodeServerTest(unittest.TestCase):
                         self.assertEqual(headers['Cache-Control'], 'no-store')
                         self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
                         self.assertEqual(headers['X-Security-Lab-SHA256'], hashlib.sha256(body).hexdigest())
-                        self.assertNotIn('unsafe-eval', headers['Content-Security-Policy'])
+                        self.assertNotIn("'unsafe-eval'", headers['Content-Security-Policy'])
                 status, headers, body = request_port(port, 'HEAD', '/assets/models/security_lab.glb')
                 self.assertEqual((status, body), (200, b''))
                 self.assertEqual(int(headers['Content-Length']), len(self.assets['assets/models/security_lab.glb']))

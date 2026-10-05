@@ -21,7 +21,7 @@ export default defineConfig({
   testDir: './tests/browser',
   // Windows software graphics must not compete across browser processes.
   // Linux keeps one native 3D window alongside headless 2D regressions.
-  workers: process.env.CI ? (isWindows ? 1 : 2) : undefined,
+  workers: process.env.CI ? (isWindows ? 1 : 2) : 2,
   use: {
     baseURL: process.env.GAME_URL || 'http://localhost:5173',
     headless: true,

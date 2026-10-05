@@ -2,4 +2,6 @@
 
 - Three.js 0.186.1: [official repository](https://github.com/mrdoob/three.js), MIT. The complete license is `vendor/three/LICENSE`. GLTFLoader, PointerLockControls, BufferGeometryUtils and SkeletonUtils are from the same pinned version. Only bare module imports were changed to local relative paths; `npm run vendor` reproduces that change.
 - [Painted Concrete 02](https://polyhaven.com/a/painted_concrete_02), Rob Tuytel / Poly Haven, CC0. The 1K diffuse, roughness and OpenGL normal maps are in `assets/authoring`, embedded in the GLB. Downloaded through the connected Poly Haven integration in Blender. Attribution is included for provenance although CC0 does not require it.
-- All lab geometry, signage and the 512 px monitor screen were authored specifically for this project in Blender. No remote resource is required while playing.
+- Corporate 04 replaces the prototype lab. Poly Haven PBR materials, stationery and the modified CC BY 3.0 office chair are credited in [Corporate asset credits](CORPORATE_ASSET_CREDITS.md). The credits are included in the executable and linked from the game's footer as `assets/credits.txt`.
+- Meshoptimizer decoder 1.1 — Arseny Kapoulkine, MIT; vendored from the pinned Three.js package. The decoder includes its WebAssembly bytes and requires no download. Full license: `vendor/three/examples/jsm/libs/MESHOPT_LICENSE.md`.
+- RoomEnvironment is from the same pinned Three.js package, MIT. Dashboard screens, signage and the remaining lab geometry were authored for this project. No remote resource is required while playing.

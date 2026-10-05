@@ -13,7 +13,7 @@ def main():
     sys.path.insert(0, str(ROOT))
     from run import PUBLIC_FILES
 
-    bundled_files = [*PUBLIC_FILES, 'package.json', 'vendor/three/LICENSE', 'vendor/three/README.md']
+    bundled_files = [*PUBLIC_FILES, 'package.json', 'vendor/three/LICENSE', 'vendor/three/README.md', 'vendor/three/examples/jsm/libs/MESHOPT_LICENSE.md']
     for name in bundled_files:
         try:
             content = (ROOT / name).read_bytes()

@@ -3,6 +3,7 @@ import { initialState, runCommand, applyAnswer, nextMission } from '../../src/en
 import { CURRENT_SAVE_KEY, SAVE_KEY, encodeGame, exportGame } from '../../src/storage.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { route } from './scene-route.js';
 
 const expect=baseExpect.configure({timeout:process.platform==='win32' && process.env.CI ? 20000 : 5000});
 const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene-entry.js')).get3DDiagnostics());
@@ -106,6 +107,17 @@ async function walkUntil(page,key,condition,timeout=16000) {
     await page.keyboard.up(key);
   }
 }
+async function walkTo(page,x,z) {
+  const d=await diagnostics(page),path=route(d.position,[x,z],d.doors);
+  for(const [px,pz] of path.slice(1)) {
+    const current=await diagnostics(page),[cx,cy,cz]=current.position;
+    if(Math.hypot(px-cx,pz-cz)<.08)continue;
+    await aim(page,px,cy,pz);
+    const axis=Math.abs(px-cx)>Math.abs(pz-cz)?'x':'z';
+    const goal=axis==='x'?px:pz,from=axis==='x'?cx:cz;
+    await walkUntil(page,'KeyW',{axis,...(goal<from?{lt:goal}:{gt:goal})});
+  }
+}
 async function aim(page,x,y,z) {
   // PointerLockControls is exercised through mouse movement events, never by
   // editing the live camera/player or by teleporting through collision bounds.
@@ -185,15 +197,16 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
 
 test('walk to all five devices; old tools, scoring, save and mission guards stay intact',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed spatial route uses the primary desktop Chromium project.');
-  test.setTimeout(180000);
+  test.setTimeout(240000);
   await start(page); await openMainDoor(page);
   await capture(page,'02-door-open.png');
   await walkUntil(page,'KeyW',{axis:'z',lt:6});
   await aim(page,-3,1.5,0); await capture(page,'01-lab-overview.png');
-  // Main operations PC: approach along its southern aisle, aiming at the screen.
-  await aim(page,-5,1.65,6); await walkUntil(page,'KeyW',{axis:'x',lt:-4.85});
+  // Corporate furniture changes the clear approaches; walk the actual aisles.
+  await walkTo(page,-3.4,3.2);
   await aim(page,-5.2,1.25,2.85);
-  await walkUntil(page,'KeyW',{target:'INTERACT_AdminPC'});
+  await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_AdminPC');
+  await capture(page,'05-soc-admin.png');
   await page.keyboard.press('KeyE');
   await expect(page.locator('#panel-terminal')).toBeVisible();
   await page.locator('#command').fill('help'); await page.locator('#command').press('Enter');
@@ -205,17 +218,15 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
   await closeAndResume(page);
   // Back to the central aisle, then up to the server-room door.
-  await aim(page,0,1.65,6); await walkUntil(page,'KeyW',{axis:'x',gt:-.12});
-  await aim(page,0,1.65,-.8); await walkUntil(page,'KeyW',{axis:'z',lt:.1});
-  await aim(page,-5.3,1.65,.1); await walkUntil(page,'KeyW',{axis:'x',lt:-5.1});
+  await walkTo(page,-5.3,.1);
   await aim(page,-5.3,1.45,-2);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_ServerRoom');
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors.find(d=>d.name==='DOOR_ServerRoom').angle).toBeCloseTo(95*Math.PI/180,2);
-  await aim(page,-5.3,1.65,-3.0); await walkUntil(page,'KeyW',{axis:'z',lt:-3.0});
-  await aim(page,-7.1,1.3,-4.55);
-  await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_ServerRack');
+  await walkTo(page,-7.1,-3.5);
+  await aim(page,-6.8,1.3,-4.55);
   await capture(page,'03-server-rack.png');
+  await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_ServerRack');
   await page.keyboard.press('KeyE'); await expect(page.locator('#panel-terminal')).toBeVisible();
   await capture(page,'04-terminal-overlay.png');
   await page.locator('#command').fill('scan club-server'); await page.locator('#command').press('Enter');
@@ -224,31 +235,30 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   expect(JSON.parse(save).game.active).toBe('services');
   await closeAndResume(page);
   // Leave the server suite through the same physical doorway, then the whiteboard.
-  await aim(page,-5.3,1.65,0); await walkUntil(page,'KeyW',{axis:'z',gt:0});
-  await aim(page,0,1.65,0); await walkUntil(page,'KeyW',{axis:'x',gt:-.1});
+  await walkTo(page,2.4,.1);
   await aim(page,2,1.7,-.82);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_Whiteboard');
   await page.keyboard.press('KeyE'); await expect(page.locator('#tool-source')).toContainText('화이트보드');
   await expect(page.locator('#hint')).toHaveText('힌트 보기 (0/3)');
   await closeAndResume(page);
   // Network bench along its clear southern approach.
-  await aim(page,0,1.65,3.8); await walkUntil(page,'KeyW',{axis:'z',gt:3.5});
-  await aim(page,7,1.65,3.8); await walkUntil(page,'KeyW',{axis:'x',gt:6.85});
+  await walkTo(page,5.3,2.0);
   await aim(page,7,1.06,1.65);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_Router');
+  await capture(page,'06-network-bench.png');
   await page.keyboard.press('KeyE'); await expect(page.locator('#panel-settings')).toBeVisible();
   await expect(page.locator('#port-8080')).toHaveValue('allow');
   await closeAndResume(page);
   // The records room has its own actual door, independent of the server suite.
-  await aim(page,5.3,1.65,3.8); await walkUntil(page,'KeyW',{axis:'x',lt:5.4});
-  await aim(page,5.3,1.65,0); await walkUntil(page,'KeyW',{axis:'z',lt:.1});
+  await walkTo(page,5.3,.1);
   await aim(page,5.3,1.45,-2);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_RecordsRoom');
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors.find(d=>d.name==='DOOR_RecordsRoom').angle).toBeCloseTo(95*Math.PI/180,2);
-  await aim(page,5.3,1.65,-5.9); await walkUntil(page,'KeyW',{axis:'z',lt:-5.8});
+  await walkTo(page,6.2,-7.0);
   await aim(page,7.4,1.2,-7.45);
-  await walkUntil(page,'KeyW',{target:'INTERACT_FileCabinet'});
+  await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_FileCabinet');
+  await capture(page,'07-records-access.png');
   await page.keyboard.press('KeyE'); await expect(page.locator('#panel-files')).toBeVisible();
   await expect(page.locator('#tool-source')).toContainText('자료 보관함');
   await closeAndResume(page);
