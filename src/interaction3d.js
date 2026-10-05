@@ -52,7 +52,7 @@ export class Interaction {
       }
       // The nearest opaque non-interactive surface blocks interaction through walls.
       const material=Array.isArray(hit.object.material) ? hit.object.material[hit.face.materialIndex] : hit.object.material;
-      if (!material?.transparent || material.opacity>.5) return null;
+      if (material?.userData.interactionOpaque ?? (!material?.transparent || material.opacity>.5)) return null;
     }
     return null;
   }

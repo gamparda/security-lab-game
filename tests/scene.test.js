@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { Matrix4, Quaternion, Vector3, Group, Mesh, BoxGeometry, MeshStandardMaterial } from '../vendor/three/build/three.module.js';
+import { Matrix4, Quaternion, Vector3, Group, Mesh, BoxGeometry, MeshStandardMaterial, MeshPhysicalMaterial } from '../vendor/three/build/three.module.js';
 import { MeshoptDecoder } from '../vendor/three/examples/jsm/libs/meshopt_decoder.module.js';
-import { batchStatic } from '../src/batch3d.js';
+import { batchStatic, isSoftwareRenderer, prepareMaterials } from '../src/batch3d.js';
+import { route } from './browser/scene-route.js';
 import { overlaps, moveWithCollisions } from '../src/collision.js';
 const wall={min:{x:-2,y:0,z:-.06},max:{x:2,y:3,z:.06}};
 test('player cannot tunnel through narrow walls, even with a long move',()=>{
@@ -90,6 +91,30 @@ test('static batching preserves transformed instances, materials, and functional
   assert.equal(instance.count,3);assert.equal(instance.geometry,geometry);
   positions.forEach((p,i)=>{const matrix=new Matrix4();instance.getMatrixAt(i,matrix);assert.ok(new Vector3().setFromMatrixPosition(instance.matrixWorld.clone().multiply(matrix)).distanceTo(p)<1e-6);});
   assert.ok(originals.every(o=>!o.visible));assert.equal(leaf.visible,true);assert.equal(multi.visible,true);
+});
+test('software glass removes the extra room pass without changing geometry or interaction occlusion',()=>{
+  for(const [name,software] of [['ANGLE (Google, Vulkan SwiftShader)',true],['ANGLE (Microsoft Basic Render Driver)',true],['ANGLE (NVIDIA RTX 5060 Ti)',false]]) {
+    const gl={getExtension:()=>({UNMASKED_RENDERER_WEBGL:1}),getParameter:()=>name};
+    assert.equal(isSoftwareRenderer(gl),software);
+  }
+  assert.equal(isSoftwareRenderer({getExtension:()=>null}),false);
+  const root=new Group(),glass=new MeshPhysicalMaterial({transmission:1,roughness:.15});
+  const mesh=new Mesh(new BoxGeometry(),glass);root.add(mesh);
+  const positions=mesh.geometry.attributes.position.array.slice();
+  prepareMaterials(root,false);assert.equal(glass.transmission,1);
+  prepareMaterials(root,true);
+  assert.equal(glass.transmission,0);assert.equal(glass.transparent,true);
+  assert.equal(glass.userData.interactionOpaque,true);
+  assert.deepEqual(mesh.geometry.attributes.position.array,positions);
+});
+test('physical route connects a safe player position inside the grid clearance margin',()=>{
+  const position=[-3.5658678169949205,1.65,3.331259219604996];
+  const doors=gltf.nodes.filter(n=>n.extras?.interaction==='door').map(n=>({name:n.name,pivot:n.translation,angle:n.name==='DOOR_Main'?100*Math.PI/180:0}));
+  const path=route(position,[-5.3,.1],doors);
+  assert.deepEqual(path[0],[position[0],position[2]]);
+  assert.deepEqual(path.at(-1),[-5.300000000000001,.1]);
+  assert.ok(path.length>2);
+  assert.throws(()=>route(position,[-8,-5],doors),/obstructed/);
 });
 test('closed main door blocks frame-quantized walking at 60 FPS and dt 0.1',()=>{
   const door=gltf.nodes.find(n=>n.name==='DOOR_Main');

@@ -2,7 +2,7 @@
 // ordinary keyboard input and collision handling; it never teleports a player.
 import { readFileSync } from 'node:fs';
 import { Box3, Matrix4, Quaternion, Vector3 } from '../../vendor/three/build/three.module.js';
-import { overlaps } from '../../src/collision.js';
+import { overlaps, moveWithCollisions } from '../../src/collision.js';
 const bytes=readFileSync(new URL('../../assets/models/security_lab.glb',import.meta.url));
 const doc=JSON.parse(bytes.subarray(20,20+bytes.readUInt32LE(12)).toString());
 const parents=new Map();doc.nodes.forEach((n,i)=>(n.children||[]).forEach(c=>parents.set(c,i)));
@@ -37,16 +37,35 @@ export function route(position,destination,doors) {
     const ok=x>=-11.6&&x<=11.6&&z>=-9.6&&z<=12.8&&!boxes.some(b=>overlaps({x,z},b,.36));
     freeCache.set(k,ok);return ok;
   };
-  const start=key(position[0],position[2]),goal=key(...destination);
-  if(!free(start)||!free(goal))throw new Error(`Waypoint is obstructed: ${start} -> ${goal}`);
+  let start=key(position[0],position[2]);
+  const goal=key(...destination),origin={x:position[0],z:position[2]};
+  if(boxes.some(b=>overlaps(origin,b)) || !free(goal)) throw new Error(`Waypoint is obstructed: ${start} -> ${goal}`);
+  // A real keyboard step can stop safely within the grid's extra 5 cm margin.
+  // Connect the exact player position to a nearby clear cell through actual
+  // collision math instead of treating a rounded coordinate as the player.
+  const reachable=k=>{
+    const [x,z]=point(k),moved=moveWithCollisions(origin,x-origin.x,z-origin.z,boxes);
+    return Math.hypot(moved.x-x,moved.z-z)<1e-5;
+  };
+  if(!free(start) || !reachable(start)) {
+    const [sx,sz]=start.split(',').map(Number),candidates=[];
+    for(let dx=-6;dx<=6;dx++) for(let dz=-6;dz<=6;dz++) {
+      const k=`${sx+dx},${sz+dz}`;
+      if(free(k)&&reachable(k)) {const [x,z]=point(k);candidates.push([Math.hypot(x-origin.x,z-origin.z),k]);}
+    }
+    candidates.sort((a,b)=>a[0]-b[0]);
+    if(!candidates.length) throw new Error(`No clear route from player position ${position}`);
+    start=candidates[0][1];
+  }
   const queue=[start],previous=new Map([[start,null]]);
   for(let head=0;head<queue.length;head++) {
     const u=queue[head];
     if(u===goal) {
       const path=[];for(let k=goal;k!==null;k=previous.get(k))path.push(point(k));path.reverse();
-      return path.filter((p,i)=>i===0||i===path.length-1||
+      const turns=path.filter((p,i)=>i===0||i===path.length-1||
         Math.sign(p[0]-path[i-1][0])!==Math.sign(path[i+1][0]-p[0])||
         Math.sign(p[1]-path[i-1][1])!==Math.sign(path[i+1][1]-p[1]));
+      return [[origin.x,origin.z],...turns];
     }
     const [x,z]=u.split(',').map(Number);
     for(const [dx,dz] of [[0,-1],[-1,0],[1,0],[0,1]]) {

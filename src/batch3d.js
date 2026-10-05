@@ -1,5 +1,26 @@
 import { Mesh, InstancedMesh, Matrix4, Vector3 } from '../vendor/three/build/three.module.js';
 import { mergeGeometries } from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js';
+
+// Preserve the full asset on every backend. Software rasterizers cannot afford
+// a second render of the entire room for refractive glass.
+export function isSoftwareRenderer(gl) {
+  const info=gl.getExtension('WEBGL_debug_renderer_info');
+  const name=info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
+  return /swiftshader|llvmpipe|softpipe|software|basic render|\bwarp\b/i.test(name);
+}
+export function prepareMaterials(model, software) {
+  if(!software) return;
+  const materials=new Set();
+  model.traverse(o=>{if(o.isMesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) materials.add(m);});
+  for(const material of materials) {
+    if(material.transmission>0) {
+      material.userData.interactionOpaque=!material.transparent || material.opacity>.5;
+      material.opacity=material.transmission>.9 ? .18 : .4;
+      material.transmission=0; material.transparent=true; material.depthWrite=false;
+      material.needsUpdate=true;
+    }
+  }
+}
 // Keep functional roots separate. Repeats share GPU data; unique geometry
 // stays indexed and is batched spatially to bound memory and raycast work.
 export function batchStatic(model) {

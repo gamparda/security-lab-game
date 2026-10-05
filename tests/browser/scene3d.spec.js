@@ -603,6 +603,9 @@ test('@windows-edge packaged 3D model displays an actual first frame',async({pag
   expect(d.firstFrameReady).toBe(true); expect(d.renderedFrames).toBeGreaterThan(0);
   expect(d.drawCalls).toBeGreaterThan(0); expect(d.colliders).toBeGreaterThan(25);
   await expect(page.locator('#scene-start')).toBeVisible();
+  // Pausing must not monopolize a software graphics runner or the user's CPU.
+  await page.waitForTimeout(250);
+  expect((await diagnostics(page)).renderedFrames).toBe(d.renderedFrames);
 });
 
 test('@windows-edge door opening and WASD move through the physical doorway',async({page},testInfo)=>{
