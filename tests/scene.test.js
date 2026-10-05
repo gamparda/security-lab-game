@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { Matrix4, Quaternion, Vector3, Group, Mesh, BoxGeometry, MeshStandardMaterial, MeshPhysicalMaterial } from '../vendor/three/build/three.module.js';
+import { Matrix4, Quaternion, Vector3, Group, Mesh, BoxGeometry, MeshStandardMaterial, MeshPhysicalMaterial, Raycaster, MeshBasicMaterial, DoubleSide, Box3 } from '../vendor/three/build/three.module.js';
 import { MeshoptDecoder } from '../vendor/three/examples/jsm/libs/meshopt_decoder.module.js';
 import { batchStatic, isSoftwareRenderer } from '../src/batch3d.js';
-import {refineGlass} from '../src/city3d.js';
+import {refineGlass,backdropGeometry,cityGeometry,windowEnvelope,CITY_SUN} from '../src/city3d.js';
 import { route, routeColliders } from './browser/scene-route.js';
 import { overlaps, moveWithCollisions } from '../src/collision.js';
 const wall={min:{x:-2,y:0,z:-.06},max:{x:2,y:3,z:.06}};
@@ -129,6 +129,41 @@ test('glass remains see-through on every backend and never acts as an opaque occ
   assert.equal(glass.userData.visibilityOpaque,false);
   assert.equal(glass.userData.interactionOpaque,true);
   assert.deepEqual(mesh.geometry.attributes.position.array,positions);
+});
+
+test('near-window and grazing rays hit a closed backdrop within the existing far clip',()=>{
+  const geometry=backdropGeometry(),backdrop=new Mesh(geometry,new MeshBasicMaterial({side:DoubleSide}));
+  backdrop.updateMatrixWorld();
+  for(const z of [-9.4,-2.2,0,4,9.4])for(const degrees of [-88,-65,-45,0,45,65,88])for(const pitch of [-75,-45,-10,0,10,45,75]){
+    const angle=degrees*Math.PI/180,tilt=pitch*Math.PI/180;
+    const direction=new Vector3(-Math.cos(angle)*Math.cos(tilt),Math.sin(tilt),Math.sin(angle)*Math.cos(tilt));
+    const hits=new Raycaster(new Vector3(-11.57,1.65,z),direction,.05,1100).intersectObject(backdrop);
+    assert.ok(hits.length,'no side edge or far-clip gap at '+[z,degrees,pitch]);
+    assert.ok(hits[0].uv.x>0&&hits[0].uv.x<1,'UV join must stay behind the office');
+  }
+  // Photo sun at approximately (0.555, 0.676); verify its world direction.
+  const positions=geometry.attributes.position,uv=geometry.attributes.uv;let closest=0;
+  const distance=i=>Math.hypot(uv.getX(i)-.555,uv.getY(i)-.676);
+  for(let i=1;i<uv.count;i++)if(distance(i)<distance(closest))closest=i;
+  const photoSun=new Vector3().fromBufferAttribute(positions,closest).normalize();
+  assert.ok(photoSun.dot(CITY_SUN)>.995,'facade highlights must follow the photographed sun');
+});
+
+test('exterior decoration uses bounded instances and stays inside existing sill clearance',()=>{
+  const {root,buildingCount}=cityGeometry(),envelope=windowEnvelope();root.add(envelope);root.updateMatrixWorld(true);
+  let draws=0,triangles=0,instances=0;
+  root.traverse(o=>{
+    assert.ok(!/^(INTERACT_|DOOR_|COLLIDER_|SPAWN_)/.test(o.name));
+    if(o.isMesh){draws++;triangles+=(o.geometry.index?.count??o.geometry.attributes.position.count)/3*(o.count??1);if(o.isInstancedMesh)instances+=o.count;}
+  });
+  assert.ok(buildingCount>=100&&instances>buildingCount);assert.ok(draws<30&&triangles<15000,'bounded city geometry without per-window objects');
+  const sill=new Box3().setFromObject(envelope.getObjectByName('Exterior_Interior_Sill'));
+  assert.ok(sill.max.x<=-11.72,'cladding must not protrude beyond the shipped reveal');
+  assert.ok(sill.max.y<1.22,'the 1.65 m eye remains above the sill');
+  const windowCollider=gltf.nodes.find(n=>n.name==='COLLIDER_West_Window');
+  const a=gltf.accessors[gltf.meshes[windowCollider.mesh].primitives[0].attributes.POSITION];
+  const stopped=moveWithCollisions({x:-10.8,z:4},-2,0,[{min:{x:a.min[0],y:a.min[1],z:a.min[2]},max:{x:a.max[0],y:a.max[1],z:a.max[2]}}]);
+  assert.ok(stopped.x>=-11.58&&stopped.x<-11.50,'original collision provides a natural window standoff');
 });
 test('physical route connects a safe player position inside the grid clearance margin',()=>{
   const position=[-3.5658678169949205,1.65,3.331259219604996];
