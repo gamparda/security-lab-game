@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { Matrix4, Quaternion, Vector3, Group, Mesh, BoxGeometry, MeshStandardMaterial, MeshPhysicalMaterial } from '../vendor/three/build/three.module.js';
 import { MeshoptDecoder } from '../vendor/three/examples/jsm/libs/meshopt_decoder.module.js';
-import { batchStatic, isSoftwareRenderer, prepareMaterials } from '../src/batch3d.js';
+import { batchStatic, isSoftwareRenderer } from '../src/batch3d.js';
+import {refineGlass} from '../src/city3d.js';
 import { route, routeColliders } from './browser/scene-route.js';
 import { overlaps, moveWithCollisions } from '../src/collision.js';
 const wall={min:{x:-2,y:0,z:-.06},max:{x:2,y:3,z:.06}};
@@ -28,6 +29,22 @@ const length=bytes.readUInt32LE(12);
 const gltf=JSON.parse(bytes.subarray(20,20+length).toString());
 const modelReport=JSON.parse(readFileSync(new URL('../assets/models/security_lab.json',import.meta.url)));
 const baseline=JSON.parse(readFileSync(new URL('../assets/models/security_lab_functional.json',import.meta.url)));
+const runtimeBaseline=JSON.parse(readFileSync(new URL('../assets/models/security_lab_runtime_functional.json',import.meta.url)));
+
+test('runtime export preserves all 101 functional interfaces and exact indexed door/collision surfaces',async()=>{
+  const interfaces=gltf.nodes.filter(n=>/^(DOOR_|COLLIDER_|INTERACT_|SPAWN_)/.test(n.name)).map(({mesh,children,...n})=>n);
+  assert.deepEqual(interfaces,runtimeBaseline.nodes);
+  await MeshoptDecoder.ready;const binary=bytes.subarray(28+length),cache=new Map();
+  function array(i){const a=gltf.accessors[i],view=gltf.bufferViews[a.bufferView],e=view.extensions?.EXT_meshopt_compression;let b=cache.get(a.bufferView);
+    if(!b){b=e?new Uint8Array(e.count*e.byteStride):binary.subarray(view.byteOffset,view.byteOffset+view.byteLength);if(e)MeshoptDecoder.decodeGltfBuffer(b,e.count,e.byteStride,binary.subarray(e.byteOffset,e.byteOffset+e.byteLength),e.mode,e.filter);cache.set(a.bufferView,b);}
+    const Type={5126:Float32Array,5125:Uint32Array,5123:Uint16Array}[a.componentType];return new Type(b.buffer,b.byteOffset+(a.byteOffset||0),a.count*(a.type==='VEC3'?3:1));
+  }
+  for(const [name,expected]of Object.entries(runtimeBaseline.geometry)){
+    const node=gltf.nodes.find(n=>n.name===name),hash=createHash('sha256');assert.ok(node,name);
+    for(const p of gltf.meshes[node.mesh].primitives){const pos=array(p.attributes.POSITION),idx=array(p.indices),values=new Float32Array(idx.length*3);for(let v=0;v<idx.length;v++)values.set(pos.subarray(idx[v]*3,idx[v]*3+3),v*3);hash.update(new Uint8Array(values.buffer));}
+    assert.equal(hash.digest('hex'),expected,name);
+  }
+});
 
 test('Corporate export retains all 76 functional world transforms and bindings',()=>{
   const parents=new Map();
@@ -71,7 +88,10 @@ test('Corporate compressed asset decodes with exact protected geometry and full 
     }
   }
   assert.equal(bytes.length,modelReport.glbBytes);
-  assert.equal(modelReport.triangles,6968337);
+  const triangles=gltf.nodes.filter(n=>n.mesh!==undefined&&!n.name?.startsWith('COLLIDER_')).reduce((s,n)=>s+gltf.meshes[n.mesh].primitives.reduce((t,p)=>t+gltf.accessors[p.indices].count/3,0),0);
+  assert.equal(modelReport.triangles,triangles);
+  assert.ok(gltf.asset.extras.runtimeExport.masterPreserved);
+  assert.equal(gltf.asset.extras.runtimeExport.baseErrorMetres,.0012);
   assert.equal(modelReport.embeddedImages,52);
   assert.ok(gltf.extensionsRequired.includes('EXT_meshopt_compression'));
 });
@@ -88,11 +108,14 @@ test('static batching preserves transformed instances, materials, and functional
   const positions=originals.map(o=>o.getWorldPosition(new Vector3()));
   batchStatic(model);model.updateMatrixWorld(true);
   const instance=model.children.find(o=>o.isInstancedMesh);
-  assert.equal(instance.count,3);assert.equal(instance.geometry,geometry);
-  positions.forEach((p,i)=>{const matrix=new Matrix4();instance.getMatrixAt(i,matrix);assert.ok(new Vector3().setFromMatrixPosition(instance.matrixWorld.clone().multiply(matrix)).distanceTo(p)<1e-6);});
-  assert.ok(originals.every(o=>!o.visible));assert.equal(leaf.visible,true);assert.equal(multi.visible,true);
+  assert.equal(instance.geometry,geometry);
+  const rendered=originals.filter(o=>o.visible).map(o=>o.getWorldPosition(new Vector3()));
+  for(const mesh of model.children.filter(o=>o.isInstancedMesh))for(let i=0;i<mesh.count;i++){const matrix=new Matrix4();mesh.getMatrixAt(i,matrix);rendered.push(new Vector3().setFromMatrixPosition(mesh.matrixWorld.clone().multiply(matrix)));}
+  assert.equal(rendered.length,positions.length);
+  for(const p of positions)assert.ok(rendered.some(v=>v.distanceTo(p)<1e-6));
+  assert.ok(originals.some(o=>!o.visible));assert.equal(leaf.visible,true);assert.equal(multi.visible,true);
 });
-test('software glass removes the extra room pass without changing geometry or interaction occlusion',()=>{
+test('glass remains see-through on every backend and never acts as an opaque occluder',()=>{
   for(const [name,software] of [['ANGLE (Google, Vulkan SwiftShader)',true],['ANGLE (Microsoft Basic Render Driver)',true],['ANGLE (NVIDIA RTX 5060 Ti)',false]]) {
     const gl={getExtension:()=>({UNMASKED_RENDERER_WEBGL:1}),getParameter:()=>name};
     assert.equal(isSoftwareRenderer(gl),software);
@@ -101,9 +124,9 @@ test('software glass removes the extra room pass without changing geometry or in
   const root=new Group(),glass=new MeshPhysicalMaterial({transmission:1,roughness:.15});
   const mesh=new Mesh(new BoxGeometry(),glass);root.add(mesh);
   const positions=mesh.geometry.attributes.position.array.slice();
-  prepareMaterials(root,false);assert.equal(glass.transmission,1);
-  prepareMaterials(root,true);
+  refineGlass(root,null);
   assert.equal(glass.transmission,0);assert.equal(glass.transparent,true);
+  assert.equal(glass.userData.visibilityOpaque,false);
   assert.equal(glass.userData.interactionOpaque,true);
   assert.deepEqual(mesh.geometry.attributes.position.array,positions);
 });

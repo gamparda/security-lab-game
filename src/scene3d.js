@@ -5,7 +5,10 @@ import { RoomEnvironment } from '../vendor/three/examples/jsm/environments/RoomE
 import { Player } from './player3d.js';
 import { Interaction } from './interaction3d.js';
 import { observeMission, requestTool } from '/src/labbridge.js';
-import { batchStatic, isSoftwareRenderer, prepareMaterials } from './batch3d.js';
+import { batchStatic, isSoftwareRenderer } from './batch3d.js';
+import { createCity, refineGlass, restoreCityEnvironment } from './city3d.js';
+import { prepareVisibility } from './visibility3d.js';
+import { Upscaler, RENDER_PRESETS } from './upscale3d.js';
 
 const $ = id => document.getElementById(id);
 const PREPARATION_TIMEOUT = 60000;
@@ -15,6 +18,8 @@ let ready = false, firstFrameReady = false, contextLost = false, mode = '2d', to
 let initialized = false, generation = 0, preparation, previousTime = 0, renderedFrames = 0;
 let frames = 0, frameMs = 0, fps = 0, noticeTimer, mission = null, currentTab = 'terminal', toolOpener;
 let softwareRenderer = false, redraw = true, environmentTarget;
+let city, visibility, upscaler, preset='quality', optimization=true, debug=false, gpuName=null;
+let loadStarted=0, loadTimeMs=0, glbLoadMs=0, renderTimeMs=0, averageFrameMs=0;
 
 function message(title, text) {
   $('scene-title').textContent = title;
@@ -115,9 +120,9 @@ function resize() {
   if (!renderer || !camera) return;
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  // A conservative default is usable on integrated GPUs and software rendering.
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, softwareRenderer ? .65 : 1));
+  renderer.setPixelRatio(1);
   renderer.setSize(innerWidth, innerHeight, false);
+  upscaler?.resize(innerWidth,innerHeight,RENDER_PRESETS[preset]);
   redraw = true;
 }
 async function waitForContext(token, signal) {
@@ -153,6 +158,8 @@ async function ensureRenderer(token, signal) {
   await waitForContext(token, signal);
   renderer = new THREE.WebGLRenderer({ canvas: $('lab-canvas'), context: graphicsContext, ...options });
   softwareRenderer = isSoftwareRenderer(graphicsContext);
+  const gpu=graphicsContext.getExtension('WEBGL_debug_renderer_info');
+  gpuName=gpu?graphicsContext.getParameter(gpu.UNMASKED_RENDERER_WEBGL):'Unavailable';
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
@@ -160,14 +167,16 @@ async function ensureRenderer(token, signal) {
   scene = new THREE.Scene();
   rebuildEnvironment();
   scene.environmentIntensity = .45;
-  scene.background = new THREE.Color('#20333e');
-  camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, .05, 70);
+  scene.background = new THREE.Color('#667b99');
+  camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, .05, 1100);
   scene.add(new THREE.HemisphereLight(0xd3e8f5, 0x65737b, 2.0));
   scene.add(new THREE.AmbientLight(0xd8e3ed, 1.1));
   const light = new THREE.DirectionalLight(0xffeed8, 2.5);
   light.position.set(-6, 3.1, 5);
   light.target.position.set(0, 0, 0);
   scene.add(light, light.target);
+  const sunset=new THREE.DirectionalLight(0xffb16b,.75);sunset.position.set(-60,12,0);scene.add(sunset);
+  upscaler=new Upscaler(renderer);
   resize();
 }
 function rebuildEnvironment() {
@@ -178,6 +187,7 @@ function rebuildEnvironment() {
   room.dispose(); pmrem.dispose();
 }
 async function readModel(controller, token) {
+  const started=performance.now();
   const signal = controller.signal;
   let stallTimer;
   const activity = () => {
@@ -207,12 +217,13 @@ async function readModel(controller, token) {
     const buffer = new Uint8Array(received);
     let offset = 0;
     for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
-    return buffer.buffer;
+    glbLoadMs=performance.now()-started;return buffer.buffer;
   } finally { clearTimeout(stallTimer); }
 }
-function installModel(loaded) {
+async function installModel(gltf) {
+  const loaded=gltf.scene;
   loaded.updateMatrixWorld(true);
-  prepareMaterials(loaded, softwareRenderer);
+  refineGlass(loaded,city?.environment.texture);
   const boxes = [];
   loaded.traverse(object => {
     if (object.name.startsWith('COLLIDER_')) { boxes.push(new THREE.Box3().setFromObject(object)); object.visible = false; }
@@ -232,6 +243,7 @@ function installModel(loaded) {
   scene.add(model);
   player = new Player(camera, $('lab-canvas'), boxes, spawn);
   interaction = new Interaction(model, camera, player, openTool);
+  visibility?.dispose();visibility=await prepareVisibility(gltf);
   player.controls.addEventListener('lock', () => {
     if (!ready || !healthyContext() || toolsOpen || mode !== '3d') { player.controls.unlock(); return; }
     $('scene-cover').hidden = true;
@@ -255,7 +267,8 @@ async function renderFirstFrame(token, signal) {
       try {
         checkAttempt(token, signal);
         if (!healthyContext()) throw new Error('3D 그래픽 연결이 복원되지 않았습니다.');
-        renderer.render(scene, camera);
+        visibility?.update(camera,innerHeight*RENDER_PRESETS[preset],optimization);
+        upscaler.render(scene, camera,true);
         if (!healthyContext() || renderer.info.render.calls === 0) throw new Error('3D 첫 화면을 표시하지 못했습니다.');
         renderedFrames++;
         redraw = false;
@@ -272,6 +285,7 @@ async function renderFirstFrame(token, signal) {
   });
 }
 function loadModel() {
+  loadStarted=performance.now();
   preparation?.controller.abort(aborted());
   const token = ++generation, controller = new AbortController(), signal = controller.signal;
   const attempt = { controller, promise: null };
@@ -296,13 +310,14 @@ function loadModel() {
         await ensureRenderer(token, signal);
         checkAttempt(token, signal);
         if (!model) {
-          const bytes = await readModel(controller, token);
+          const [bytes,exterior] = await Promise.all([readModel(controller, token),city?Promise.resolve(city):createCity(renderer)]);
+  if(!city){city=exterior;scene.add(city.root);}
           $('scene-progress').value = 85;
           $('scene-message').textContent = '장비와 충돌 경계를 준비하고 있습니다.';
           const loaded = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes, new URL('assets/models/', location.href).href);
           if (signal.aborted || token !== generation || mode !== '3d') { clearResources(loaded.scene); checkAttempt(token, signal); }
           pendingModel = loaded.scene;
-          installModel(pendingModel);
+          await installModel(loaded);
           pendingModel = undefined;
         }
         checkAttempt(token, signal);
@@ -324,6 +339,7 @@ function loadModel() {
       if (!healthyContext()) throw new Error('3D 그래픽 연결이 복원되지 않았습니다.');
       firstFrameReady = true;
       ready = true;
+      loadTimeMs=performance.now()-loadStarted;
       $('lab-world').dataset.state = 'ready';
       $('lab-world').setAttribute('aria-busy', 'false');
       $('scene-progress').value = 100;
@@ -391,7 +407,7 @@ function animate(time) {
   // A paused view is static. Re-render only after resize/reset or an unfinished
   // door animation, leaving the browser free to process dialogs and input.
   const movingDoor = interaction.doors.some(door => Math.abs(door.target-door.angle) > .0001);
-  if (!player.controls.isLocked && !movingDoor && !redraw) return;
+  if (!player.controls.isLocked && !movingDoor && !redraw && !upscaler?.pending) return;
   const steps = Math.max(1, Math.ceil(dt / .1));
   for (let step = 0; step < steps; step++) {
     interaction.update(dt / steps);
@@ -402,14 +418,18 @@ function animate(time) {
   $('interaction-prompt').hidden = !prompt;
   $('crosshair').classList.toggle('target', Boolean(prompt));
   try {
-    renderer.render(scene, camera);
+    const lodChanged=visibility?.update(camera,innerHeight*RENDER_PRESETS[preset],optimization);
+    const started=performance.now();
+    upscaler.render(scene, camera,movingDoor||lodChanged);
+    renderTimeMs=performance.now()-started;
     if (!healthyContext()) return;
     renderedFrames++;
     redraw = false;
   } catch (error) { cancelPreparation(error); return; }
   frameMs += elapsed;
   frames++;
-  if (frameMs >= 1000) { fps = Math.round(frames * 1000 / frameMs); frameMs = 0; frames = 0; }
+  if (frameMs >= 1000) { fps = Math.round(frames * 1000 / frameMs);averageFrameMs=frameMs/frames; frameMs = 0; frames = 0; }
+  if(debug)$('graphics-debug').textContent=`${fps} FPS · ${averageFrameMs.toFixed(1)} ms\n${renderer.info.render.calls} calls · ${renderer.info.render.triangles.toLocaleString()} triangles\n${Math.round(RENDER_PRESETS[preset]*100)}% · WebGL2 / ${softwareRenderer?'software':'GPU'}\n${visibility.stats.visibleZones.join(' / ')}\nLOD 0/1/2: ${visibility.stats.lod.join(' / ')} · culled ${visibility.stats.culled}`;
 }
 export function get3DDiagnostics() {
   const direction = camera?.getWorldDirection(new THREE.Vector3());
@@ -427,7 +447,11 @@ export function get3DDiagnostics() {
     target: interaction?.target?.name ?? null,
     doors: interaction?.doors.map(door => ({ name: door.object.name, angle: door.angle, target: door.target, pivot: door.object.position.toArray() })) ?? [],
     colliders: player?.boxes.length ?? 0, drawCalls: renderer?.info.render.calls ?? 0,
-    triangles: renderer?.info.render.triangles ?? 0, fps, renderer: rendererVersion, softwareRenderer,
+    triangles: renderer?.info.render.triangles ?? 0, fps, frameTimeMs:averageFrameMs,renderTimeMs, renderer: rendererVersion, softwareRenderer,
+    backend:'WebGL2',gpu:gpuName,geometries:renderer?.info.memory.geometries,textures:renderer?.info.memory.textures,
+    renderScale:RENDER_PRESETS[preset],preset,temporal:upscaler?.temporal,historySamples:upscaler?.samples,
+    optimization,visibleZones:visibility?.stats.visibleZones,lod:visibility?.stats.lod,culled:visibility?.stats.culled,
+    loadTimeMs,glbLoadMs,heapMB:performance.memory?.usedJSHeapSize/1048576,cityBuildings:city?.buildingCount,
   };
 }
 export function init3D() {
@@ -444,6 +468,11 @@ export function init3D() {
       if (toolsOpen) $('lab-tools').setAttribute('aria-busy', String(busy()));
     });
     $('scene-start').addEventListener('click', lock);
+    try{const value=localStorage.getItem('security-lab-render-preset');if(value in RENDER_PRESETS)preset=value;}catch{}
+    $('render-preset').value=preset;
+    $('render-preset').addEventListener('change',()=>{preset=$('render-preset').value;try{localStorage.setItem('security-lab-render-preset',preset);}catch{}resize();});
+    $('temporal-aa').addEventListener('change',()=>{if(upscaler){upscaler.temporal=$('temporal-aa').checked;upscaler.reset();redraw=true;}});
+    debug=new URLSearchParams(location.search).has('debug');$('graphics-debug').hidden=!debug;
     $('lab-canvas').addEventListener('click', lock);
     $('scene-retry').addEventListener('click', () => document.dispatchEvent(new Event('scene3d-retry')));
     $('world-notes').addEventListener('click', () => openTool('brief', '조사 노트 / 현재 미션'));
@@ -479,11 +508,16 @@ export function init3D() {
       // This listener predates Three's listener. Recreate the generated light
       // texture only after Three has rebuilt its WebGL state for the new context.
       queueMicrotask(() => {
-        if (renderer && scene && !contextLost) rebuildEnvironment();
+        if (renderer && scene && !contextLost) {
+          rebuildEnvironment();
+          if(city){restoreCityEnvironment(renderer,city);if(model)refineGlass(model,city.environment.texture);}
+          upscaler?.reset();redraw=true;
+        }
         if (mode === '3d' && !ready && !preparation) void loadModel().catch(() => {});
       });
     });
     document.addEventListener('keydown', event => {
+      if(event.code==='F3'&&mode==='3d'){event.preventDefault();debug=!debug;$('graphics-debug').hidden=!debug;}
       if (mode !== '3d' || nativeDialogOpen()) return;
       if (event.code === 'KeyE' && !event.repeat && ready && player?.controls.isLocked && !toolsOpen) { event.preventDefault(); interaction.interact(); }
       if (event.code === 'Escape' && player?.controls.isLocked && !toolsOpen) { event.preventDefault(); player.controls.unlock(); }

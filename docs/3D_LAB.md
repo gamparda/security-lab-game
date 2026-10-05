@@ -1,6 +1,6 @@
 # 3D 실습실
 
-Windows 10/11 x64에서 EXE를 실행한다. Python·Node.js·Blender 설치는 필요 없다. Edge 또는 Chrome을 권장한다.
+Windows 10/11 x64에서 EXE를 실행한다. Python·Node.js·Blender 설치는 필요 없다. 최신 Google Chrome Desktop, 키보드·마우스와 1280×720 이상 화면이 필요하다.
 
 ## 조작
 
@@ -25,7 +25,9 @@ Windows 10/11 x64에서 EXE를 실행한다. Python·Node.js·Blender 설치는 
 
 ## 모델과 개발
 
-Corporate 04의 24 × 23m 실습실(업무석 25 + SOC 관리자석 1), 6개 서버랙과 2개 네트워크 벤치를 사용한다. 약 184.6MB GLB에 697만 삼각형과 원본 해상도의 PBR 이미지를 포함하며, 고품질 PC 환경을 우선한다. 낮은 사양의 PC에서는 2D 도구 화면을 사용할 수 있다. 실행 중 외부 다운로드는 없다.
+Corporate 04의 24 × 23m 실습실(업무석 25 + SOC 관리자석 1), 6개 서버랙과 2개 네트워크 벤치를 사용한다. Blender 고품질 원본은 보존하며 게임에서는 약 67.9MB의 LOD 런타임 GLB를 사용한다. 창밖은 3D 건물·강·교량과 원거리 도시 사진으로 구성된다. 실행 중 외부 다운로드는 없다.
+
+일시정지 화면에서 3D 화질을 선택한다. 기본 Quality는 75%이며 HTML UI는 항상 원래 해상도다. 정지 화면 누적 안티앨리어싱은 이동·문·LOD 변경에 기록을 초기화한다. F3 성능 표시와 자세한 설명은 [Chrome 런타임](CHROME_RUNTIME.md)을 참고한다.
 
 모델 및 Blender 원본은 Git LFS로 관리한다. 복제 후 `git lfs install`과 `git lfs pull`을 실행한다. Windows 빌드와 CI도 LFS를 내려받는다. 재내보내기 절차는 [Corporate 통합](CORPORATE_INTEGRATION.md)에 있다. 기존 `build_security_lab.py`는 최초 프로토타입 제작용이다.
 

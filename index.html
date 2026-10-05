@@ -90,9 +90,11 @@
       <div id="scene-cover" class="scene-cover"><div class="scene-card">
         <p class="eyebrow">SECURITY LAB / INTERACTIVE TRAINING</p><h2 id="scene-title">실습실 준비 중</h2><p id="scene-message" role="status">공간과 조사 장비를 불러오고 있습니다.</p>
         <progress id="scene-progress" max="100" value="0" aria-label="3D 공간 로딩"></progress>
+        <div class="graphics-options"><label>3D 화질 <select id="render-preset"><option value="native">Native · 100%</option><option value="ultra">Ultra Quality · 85%</option><option value="quality" selected>Quality · 75%</option><option value="balanced">Balanced · 60%</option><option value="performance">Performance · 50%</option></select></label><label><input id="temporal-aa" type="checkbox" checked> 정지 화면 안티앨리어싱</label></div>
         <div class="scene-actions"><button id="scene-start" class="primary" hidden>탐색 시작 →</button><button id="scene-retry" hidden>3D 다시 불러오기</button><button id="scene-fallback">2D 도구 화면</button></div>
         <p class="scene-note">키보드와 마우스 필요 · 실제 서버를 공격하지 않는 로컬 실습<br>도구를 닫은 뒤 탐색 시작을 눌러 다시 이동하세요.</p>
       </div></div>
+      <pre id="graphics-debug" class="graphics-debug" hidden></pre>
     </section>
     <a class="skip-link" href="#command">명령 입력으로 이동</a>
     <header class="topbar">
