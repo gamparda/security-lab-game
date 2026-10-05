@@ -163,19 +163,33 @@ async function ensureRenderer(token, signal) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
-  renderer.shadowMap.enabled = false;
+  renderer.shadowMap.enabled = !softwareRenderer;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;
   scene = new THREE.Scene();
   rebuildEnvironment();
-  scene.environmentIntensity = .45;
+  scene.environmentIntensity = .32;
   scene.background = new THREE.Color('#667b99');
   camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, .05, 1100);
-  scene.add(new THREE.HemisphereLight(0xd3e8f5, 0x65737b, 2.0));
-  scene.add(new THREE.AmbientLight(0xd8e3ed, 1.1));
-  const light = new THREE.DirectionalLight(0xffeed8, 2.5);
+  scene.add(new THREE.HemisphereLight(0xe2e8ed, 0x3d444b, .85));
+  scene.add(new THREE.AmbientLight(0xdfe4e7, .24));
+  const light = new THREE.DirectionalLight(0xfff3e6, 1.35);
   light.position.set(-6, 3.1, 5);
   light.target.position.set(0, 0, 0);
+  // Furniture is stationary. Bake this one practical shadow map at install/
+  // context restoration; moving glass doors are deliberately excluded.
+  light.castShadow=!softwareRenderer;light.shadow.mapSize.set(2048,2048);
+  Object.assign(light.shadow.camera,{left:-15,right:15,top:13,bottom:-13,near:.1,far:35});
+  light.shadow.bias=-.00015;light.shadow.normalBias=.025;
   scene.add(light, light.target);
   const sunset=new THREE.DirectionalLight(0xffb16b,.75);sunset.position.copy(CITY_SUN).multiplyScalar(100);scene.add(sunset);
+  // Bounded practical fills establish office/network/server identity without
+  // extra scene passes or shadow maps. The sunset/exterior pipeline is unchanged.
+  for(const [color,intensity,distance,position] of [
+    [0xe9edf0,12,9,[0,3.10,5]],
+    [0xd9e6f1,11,7,[7,3.08,2]],
+    [0xc9ddf2,15,9,[-7,3.12,-6]],
+  ]) {const fill=new THREE.PointLight(color,intensity,distance,2);fill.position.set(...position);scene.add(fill);}
   upscaler=new Upscaler(renderer);
   resize();
 }
@@ -224,12 +238,31 @@ async function installModel(gltf) {
   const loaded=gltf.scene;
   loaded.updateMatrixWorld(true);
   refineGlass(loaded,city?.environment.texture);
+  const finishes=new Set();
+  loaded.traverse(object=>{
+    if(!object.isMesh||object.name.startsWith('COLLIDER_'))return;
+    for(const material of Array.isArray(object.material)?object.material:[object.material]) {
+      if(material?.sheen>0) material.sheen=.07;
+      if(!material?.aoMap||finishes.has(material))continue;finishes.add(material);
+      // Offline static contact AO also attenuates the broad ceiling fill. This
+      // makes feet, cabinets and desks meet the floor, without dynamic SSAO.
+      material.onBeforeCompile=shader=>{
+        shader.fragmentShader=shader.fragmentShader.replace('#include <aomap_fragment>',
+          '#include <aomap_fragment>\n#ifdef USE_AOMAP\nreflectedLight.directDiffuse *= mix(1.0, ambientOcclusion, 0.72);\n#endif');
+      };
+      material.customProgramCacheKey=()=> 'interior-static-contact-v1';
+      material.needsUpdate=true;
+    }
+  });
   const boxes = [];
   loaded.traverse(object => {
     if (object.name.startsWith('COLLIDER_')) { boxes.push(new THREE.Box3().setFromObject(object)); object.visible = false; }
     if (object.isMesh && !object.name.startsWith('COLLIDER_')) {
-      object.castShadow = false;
-      object.receiveShadow = false;
+      const materials=Array.isArray(object.material)?object.material:[object.material];
+      let moving=false;for(let p=object;p;p=p.parent)if(p.userData.interaction==='door')moving=true;
+      object.castShadow = !moving && !materials.some(m=>m.transparent||m.transmission>0)
+        && /Desk|Chair|Workstation|Computer|Rack|Router|Cabinet|Partition|Monitor|Managed|Document|Mouse|Binder|Printer/.test(object.name);
+      object.receiveShadow = !materials.some(m=>m.transparent||m.transmission>0);
       for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material.map) material.map.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     }
   });
@@ -241,6 +274,7 @@ async function installModel(gltf) {
   if (model) { scene.remove(model); clearResources(model); }
   model = loaded;
   scene.add(model);
+  renderer.shadowMap.needsUpdate=true;
   player = new Player(camera, $('lab-canvas'), boxes, spawn);
   interaction = new Interaction(model, camera, player, openTool);
   visibility?.dispose();visibility=await prepareVisibility(gltf);
@@ -267,7 +301,10 @@ async function renderFirstFrame(token, signal) {
       try {
         checkAttempt(token, signal);
         if (!healthyContext()) throw new Error('3D 그래픽 연결이 복원되지 않았습니다.');
-        visibility?.update(camera,innerHeight*RENDER_PRESETS[preset],optimization);
+        // The one-time shadow bake must see furniture in every zone, including
+        // objects outside the player's initial view. Normal culling resumes
+        // on the next frame; subsequent renders reuse the cached shadow map.
+        visibility?.update(camera,innerHeight*RENDER_PRESETS[preset],optimization&&!(renderer.shadowMap.enabled&&renderer.shadowMap.needsUpdate));
         upscaler.render(scene, camera,true);
         if (!healthyContext() || renderer.info.render.calls === 0) throw new Error('3D 첫 화면을 표시하지 못했습니다.');
         renderedFrames++;
@@ -511,6 +548,7 @@ export function init3D() {
         if (renderer && scene && !contextLost) {
           rebuildEnvironment();
           if(city){restoreCityEnvironment(renderer,city);if(model)refineGlass(model,city.environment.texture);}
+          renderer.shadowMap.needsUpdate=true;
           upscaler?.reset();redraw=true;
         }
         if (mode === '3d' && !ready && !preparation) void loadModel().catch(() => {});

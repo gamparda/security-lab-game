@@ -1,3 +1,4 @@
 assets/models/security_lab.glb filter=lfs diff=lfs merge=lfs -text
 assets/authoring/Security_Lab_Corporate_04.blend filter=lfs diff=lfs merge=lfs -text
+assets/authoring/Security_Lab_Interior_05.blend filter=lfs diff=lfs merge=lfs -text
 vendor/three/** -whitespace
