@@ -81,12 +81,12 @@
     </section>
     <div id="game" hidden>
     <section id="lab-world" class="lab-world" aria-label="3D 보안 실습실" hidden>
-      <canvas id="lab-canvas" tabindex="0" aria-label="3D 실습실. WASD 이동, 마우스 시점, E 상호작용, Esc 일시정지"></canvas>
+      <canvas id="lab-canvas" tabindex="0" aria-label="3D 실습실. WASD 이동, Ctrl 앉기, Space 점프, 마우스 시점, E 상호작용, Esc 일시정지"></canvas>
       <div class="world-actions"><button id="world-notes">조사 노트</button><button id="world-reset">출입구로 돌아가기</button><button id="world-2d">2D 도구 화면</button></div>
       <aside class="mission-hud"><p id="hud-mission" class="eyebrow">CASE 001</p><h2 id="hud-title">조사 준비</h2><p id="hud-objective"></p><p id="hud-stage" class="hud-stage"></p></aside>
       <span id="crosshair" class="crosshair" aria-hidden="true" hidden></span>
       <p id="interaction-prompt" class="interaction-prompt" role="status" hidden></p>
-      <div class="world-footer"><span><kbd>W A S D</kbd> 이동 &nbsp; <kbd>SHIFT</kbd> 달리기 &nbsp; <kbd>E</kbd> 조사 &nbsp; <kbd>ESC</kbd> 일시정지</span><span id="world-location">SECURITY OPERATIONS / TRAINING FACILITY</span></div>
+      <div class="world-footer"><span><kbd>W A S D</kbd> 이동 &nbsp; <kbd>SHIFT</kbd> 달리기 &nbsp; <kbd>CTRL</kbd> 앉기 &nbsp; <kbd>SPACE</kbd> 점프 &nbsp; <kbd>E</kbd> 조사 &nbsp; <kbd>ESC</kbd> 일시정지</span><span id="world-location">SECURITY OPERATIONS / TRAINING FACILITY</span></div>
       <div id="scene-cover" class="scene-cover"><div class="scene-card">
         <p class="eyebrow">SECURITY LAB / INTERACTIVE TRAINING</p><h2 id="scene-title">실습실 준비 중</h2><p id="scene-message" role="status">공간과 조사 장비를 불러오고 있습니다.</p>
         <progress id="scene-progress" max="100" value="0" aria-label="3D 공간 로딩"></progress>

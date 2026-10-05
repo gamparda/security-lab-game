@@ -36,6 +36,19 @@ test('Windows Chrome: packaged first frame, collision, door, WASD, INTERACT, mis
  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:65000});
  const initial=await diagnostics(page);expect(initial.firstFrameReady).toBe(true);expect(initial.drawCalls).toBeGreaterThan(0);expect(initial.colliders).toBe(89);expect(initial.cityBuildings).toBeGreaterThan(0);
  await page.locator('#scene-start').click();await expect.poll(async()=>(await diagnostics(page)).pointerLocked).toBe(true);
+ await page.keyboard.down('ControlLeft');
+ await expect.poll(async()=>(await diagnostics(page)).crouched).toBe(true);
+ await expect.poll(async()=>(await diagnostics(page)).position[1]).toBeLessThan(1.05);
+ expect((await diagnostics(page)).bodyHeight).toBe(1.1);
+ await page.keyboard.up('ControlLeft');
+ await expect.poll(async()=>(await diagnostics(page)).position[1]).toBeGreaterThan(1.6);
+ await page.keyboard.down('Space');
+ await expect.poll(async()=>(await diagnostics(page)).grounded,{intervals:[30]}).toBe(false);
+ await expect.poll(async()=>(await diagnostics(page)).position[1],{intervals:[30]}).toBeGreaterThan(1.95);
+ await expect.poll(async()=>(await diagnostics(page)).grounded,{intervals:[50]}).toBe(true);
+ // Held/repeated Space cannot continuously bounce after landing.
+ await page.waitForTimeout(200);expect((await diagnostics(page)).feetY).toBe(0);
+ await page.keyboard.up('Space');
  await aim(page,0,1.65,9);await walk(page,'KeyW',{axis:'z',lt:10.32});
  await walk(page,'KeyW',{seconds:.2});expect((await diagnostics(page)).position[2]).toBeGreaterThanOrEqual(10.2);
  await expect.poll(async()=>(await diagnostics(page)).target).toBe('DOOR_Main');await page.keyboard.press('KeyE');

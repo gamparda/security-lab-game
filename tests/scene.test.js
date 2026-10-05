@@ -7,8 +7,23 @@ import { MeshoptDecoder } from '../vendor/three/examples/jsm/libs/meshopt_decode
 import { batchStatic, isSoftwareRenderer } from '../src/batch3d.js';
 import {refineGlass,backdropGeometry,cityGeometry,windowEnvelope,CITY_SUN} from '../src/city3d.js';
 import { route, routeColliders } from './browser/scene-route.js';
-import { overlaps, moveWithCollisions } from '../src/collision.js';
+import { overlaps, moveWithCollisions, moveVertically } from '../src/collision.js';
 const wall={min:{x:-2,y:0,z:-.06},max:{x:2,y:3,z:.06}};
+test('crouching changes clearance and jumping cannot tunnel through lintels or land through props',()=>{
+  const header={min:{x:-1,y:1.25,z:-1},max:{x:1,y:1.5,z:1}};
+  assert.equal(overlaps({x:0,z:0,feetY:0,height:1.8},header),true);
+  assert.equal(overlaps({x:0,z:0,feetY:0,height:1.1},header),false);
+  assert.ok(moveWithCollisions({x:0,z:2},0,-4,[header],{feetY:0,height:1.1}).z<-1.9);
+  assert.ok(moveWithCollisions({x:0,z:2},0,-4,[wall],{feetY:.7,height:1.1}).z>.3);
+  const highHeader={min:{x:-1,y:2.3,z:-1},max:{x:1,y:3.4,z:1}};
+  const head=moveVertically({x:0,z:0},2,[highHeader],{feetY:0,height:1.8});
+  assert.ok(Math.abs(head.feetY-.5)<1e-6);assert.equal(head.blocked,true);assert.equal(head.grounded,false);
+  const desk={min:{x:-1,y:0,z:-1},max:{x:1,y:.85,z:1}};
+  assert.equal(overlaps({x:0,z:0,feetY:.83,height:1.8},desk),true,'do not step through the last 2cm of a prop');
+  assert.equal(overlaps({x:0,z:0,feetY:.85,height:1.8},desk),false,'standing exactly on a prop is clear');
+  assert.deepEqual(moveVertically({x:0,z:0},-2,[desk],{feetY:1,height:1.8}),{feetY:.85,blocked:true,grounded:true});
+  assert.deepEqual(moveVertically({x:2,z:0},-2,[desk],{feetY:1,height:1.8}),{feetY:0,blocked:true,grounded:true});
+});
 test('player cannot tunnel through narrow walls, even with a long move',()=>{
   const p=moveWithCollisions({x:0,z:2},0,-10,[wall]);
   assert.ok(p.z>=.31); assert.ok(p.z<.45);
@@ -30,6 +45,21 @@ const gltf=JSON.parse(bytes.subarray(20,20+length).toString());
 const modelReport=JSON.parse(readFileSync(new URL('../assets/models/security_lab.json',import.meta.url)));
 const baseline=JSON.parse(readFileSync(new URL('../assets/models/security_lab_functional.json',import.meta.url)));
 const runtimeBaseline=JSON.parse(readFileSync(new URL('../assets/models/security_lab_runtime_functional.json',import.meta.url)));
+
+test('door-frame and floor finishes export usable UV channels',()=>{
+  for(const name of ['ENV_Frame_DOOR_Main','ENV_Frame_DOOR_ServerRoom','ENV_Frame_DOOR_RecordsRoom','ENV_Floor_Entry','CORP_Server_Antistatic_Tiles']) {
+    const node=gltf.nodes.find(n=>n.name===name);assert.ok(node,name);
+    for(const p of gltf.meshes[node.mesh].primitives) {
+      assert.ok(p.attributes.TEXCOORD_0!==undefined,name+' UV');
+      const check=value=>{
+        if(!value||typeof value!=='object')return;
+        if('index' in value&&'texCoord' in value)assert.ok(value.texCoord>=0&&p.attributes['TEXCOORD_'+value.texCoord]!==undefined,name+' texture channel');
+        for(const v of Object.values(value))check(v);
+      };
+      check(gltf.materials[p.material]);
+    }
+  }
+});
 
 test('runtime export preserves all 101 functional interfaces and exact indexed door/collision surfaces',async()=>{
   const interfaces=gltf.nodes.filter(n=>/^(DOOR_|COLLIDER_|INTERACT_|SPAWN_)/.test(n.name)).map(({mesh,children,...n})=>n);

@@ -30,7 +30,7 @@ export class Interaction {
       door.object.rotation.y=door.angle; door.object.updateWorldMatrix(true,true);
       door.box.copy(door.local).applyMatrix4(door.object.matrixWorld);
       // Opening/closing never sweeps a leaf through the player's body.
-      if (overlaps(this.player.camera.position,door.box,.305) && Math.abs(door.angle-previous)>.0001) {
+      if (overlaps({...this.player.camera.position,...this.player.body},door.box,.305) && Math.abs(door.angle-previous)>.0001) {
         door.angle=previous; door.object.rotation.y=previous; door.object.updateWorldMatrix(true,true);
         door.box.copy(door.local).applyMatrix4(door.object.matrixWorld);
         door.from=previous; door.target=door.open; door.time=0;
