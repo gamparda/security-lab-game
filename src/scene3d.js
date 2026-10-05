@@ -6,7 +6,7 @@ import { Player } from './player3d.js';
 import { Interaction } from './interaction3d.js';
 import { observeMission, requestTool } from '/src/labbridge.js';
 import { batchStatic, isSoftwareRenderer } from './batch3d.js';
-import { createCity, refineGlass } from './city3d.js';
+import { createCity, refineGlass, restoreCityEnvironment } from './city3d.js';
 import { prepareVisibility } from './visibility3d.js';
 import { Upscaler, RENDER_PRESETS } from './upscale3d.js';
 
@@ -508,7 +508,11 @@ export function init3D() {
       // This listener predates Three's listener. Recreate the generated light
       // texture only after Three has rebuilt its WebGL state for the new context.
       queueMicrotask(() => {
-        if (renderer && scene && !contextLost) rebuildEnvironment();
+        if (renderer && scene && !contextLost) {
+          rebuildEnvironment();
+          if(city){restoreCityEnvironment(renderer,city);if(model)refineGlass(model,city.environment.texture);}
+          upscaler?.reset();redraw=true;
+        }
         if (mode === '3d' && !ready && !preparation) void loadModel().catch(() => {});
       });
     });

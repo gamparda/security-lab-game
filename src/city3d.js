@@ -40,7 +40,12 @@ export async function createCity(renderer) {
  reflectionScene.add(panorama.clone());reflectionScene.add(buildings.clone());
  const warm=new THREE.DirectionalLight(0xffbf7d,2);warm.position.set(-400,80,0);reflectionScene.add(warm,new THREE.HemisphereLight(0xaebcdb,0x273240,1.3));
  const pmrem=new THREE.PMREMGenerator(renderer),environment=pmrem.fromScene(reflectionScene,.08,.1,900,{size:128});pmrem.dispose();
- return {root,environment,panorama,buildingCount:60};
+ return {root,environment,reflectionScene,panorama,buildingCount:60};
+}
+
+export function restoreCityEnvironment(renderer,city){
+ city.environment.dispose();const pmrem=new THREE.PMREMGenerator(renderer);
+ city.environment=pmrem.fromScene(city.reflectionScene,.08,.1,900,{size:128});pmrem.dispose();
 }
 
 export function refineGlass(model,cityEnvironment) {
