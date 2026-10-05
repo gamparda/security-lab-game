@@ -11,6 +11,8 @@ const files = [
   'examples/jsm/utils/BufferGeometryUtils.js',
   'examples/jsm/utils/SkeletonUtils.js',
   'examples/jsm/controls/PointerLockControls.js',
+  'examples/jsm/libs/meshopt_decoder.module.js',
+  'examples/jsm/environments/RoomEnvironment.js',
   'LICENSE',
 ];
 const check = process.argv.includes('--check');

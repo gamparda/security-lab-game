@@ -3,18 +3,20 @@ import { initialState, runCommand, applyAnswer, nextMission } from '../../src/en
 import { CURRENT_SAVE_KEY, SAVE_KEY, encodeGame, exportGame } from '../../src/storage.js';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { route } from './scene-route.js';
 
-const expect=baseExpect.configure({timeout:process.platform==='win32' && process.env.CI ? 20000 : 5000});
+const expect=baseExpect.configure({timeout:process.env.CI ? 20000 : 5000});
 const diagnostics=page=>page.evaluate(async()=> (await import('/src/scene-entry.js')).get3DDiagnostics());
+const READY_TIMEOUT=85000;
 const VIEW_KEY='security-lab-view';
 const desktop3D=testInfo=>['desktop','windows-edge'].includes(testInfo.project.name);
 const main3D=testInfo=>testInfo.project.name==='desktop';
 test.beforeEach(async({page},testInfo)=>{
+  if(desktop3D(testInfo)) testInfo.setTimeout(180000);
   if(process.env.CI && desktop3D(testInfo)) {
     // Hosted runners use software graphics. Keep the real scene, collisions,
     // rendering and input, at a smaller viewport rather than bypassing them.
     await page.setViewportSize({width:640,height:480});
-    testInfo.setTimeout(process.platform==='win32' ? 120000 : 60000);
   }
 });
 async function savedGame(page) {
@@ -40,7 +42,7 @@ async function capture(page,file) {
 }
 async function start(page) {
   await page.goto('/?view=3d');
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await resume(page);
 }
 async function resume(page) {
@@ -106,6 +108,22 @@ async function walkUntil(page,key,condition,timeout=16000) {
     await page.keyboard.up(key);
   }
 }
+async function walkTo(page,x,z) {
+  const d=await diagnostics(page),path=route(d.position,[x,z],d.doors);
+  for(const [px,pz] of path.slice(1)) {
+    const current=await diagnostics(page),[cx,cy,cz]=current.position;
+    // The route can end with a 10 cm grid connector. Do not take another
+    // full keyboard frame when already standing at the destination: a slow
+    // software-rendered frame can advance 1.3 m before its keyup is observed.
+    // Intermediate corners still use the tighter tolerance below.
+    if(Math.hypot(x-cx,z-cz)<.3)break;
+    if(Math.hypot(px-cx,pz-cz)<.08)continue;
+    await aim(page,px,cy,pz);
+    const axis=Math.abs(px-cx)>Math.abs(pz-cz)?'x':'z';
+    const goal=axis==='x'?px:pz,from=axis==='x'?cx:cz;
+    await walkUntil(page,'KeyW',{axis,...(goal<from?{lt:goal}:{gt:goal})});
+  }
+}
 async function aim(page,x,y,z) {
   // PointerLockControls is exercised through mouse movement events, never by
   // editing the live camera/player or by teleporting through collision bounds.
@@ -123,7 +141,7 @@ async function closeAndResume(page) {
 
 test('3D actual movement, closed-door collision, hinge rotation, mouse and pause',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed physical navigation uses the primary desktop Chromium project.');
-  test.setTimeout(120000);
+  test.setTimeout(process.env.CI ? 180000 : 120000);
   const errors=[],violations=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.cspErrors=(window.cspErrors||[]).concat({directive:e.violatedDirective,blockedURI:e.blockedURI,sourceFile:e.sourceFile,line:e.lineNumber,sample:e.sample})));
@@ -185,15 +203,16 @@ test('3D actual movement, closed-door collision, hinge rotation, mouse and pause
 
 test('walk to all five devices; old tools, scoring, save and mission guards stay intact',async({page},testInfo)=>{
   test.skip(!main3D(testInfo),'Detailed spatial route uses the primary desktop Chromium project.');
-  test.setTimeout(180000);
+  test.setTimeout(process.env.CI ? 360000 : 240000);
   await start(page); await openMainDoor(page);
   await capture(page,'02-door-open.png');
   await walkUntil(page,'KeyW',{axis:'z',lt:6});
   await aim(page,-3,1.5,0); await capture(page,'01-lab-overview.png');
-  // Main operations PC: approach along its southern aisle, aiming at the screen.
-  await aim(page,-5,1.65,6); await walkUntil(page,'KeyW',{axis:'x',lt:-4.85});
+  // Corporate furniture changes the clear approaches; walk the actual aisles.
+  await walkTo(page,-3.4,3.2);
   await aim(page,-5.2,1.25,2.85);
-  await walkUntil(page,'KeyW',{target:'INTERACT_AdminPC'});
+  await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_AdminPC');
+  await capture(page,'05-soc-admin.png');
   await page.keyboard.press('KeyE');
   await expect(page.locator('#panel-terminal')).toBeVisible();
   await page.locator('#command').fill('help'); await page.locator('#command').press('Enter');
@@ -205,17 +224,17 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
   await closeAndResume(page);
   // Back to the central aisle, then up to the server-room door.
-  await aim(page,0,1.65,6); await walkUntil(page,'KeyW',{axis:'x',gt:-.12});
-  await aim(page,0,1.65,-.8); await walkUntil(page,'KeyW',{axis:'z',lt:.1});
-  await aim(page,-5.3,1.65,.1); await walkUntil(page,'KeyW',{axis:'x',lt:-5.1});
+  // Stand comfortably inside interaction reach rather than at its outer
+  // boundary, leaving room for real frame-quantized keyboard movement.
+  await walkTo(page,-5.3,-.6);
   await aim(page,-5.3,1.45,-2);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_ServerRoom');
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors.find(d=>d.name==='DOOR_ServerRoom').angle).toBeCloseTo(95*Math.PI/180,2);
-  await aim(page,-5.3,1.65,-3.0); await walkUntil(page,'KeyW',{axis:'z',lt:-3.0});
-  await aim(page,-7.1,1.3,-4.55);
-  await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_ServerRack');
+  await walkTo(page,-7.1,-3.5);
+  await aim(page,-6.8,1.3,-4.55);
   await capture(page,'03-server-rack.png');
+  await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_ServerRack');
   await page.keyboard.press('KeyE'); await expect(page.locator('#panel-terminal')).toBeVisible();
   await capture(page,'04-terminal-overlay.png');
   await page.locator('#command').fill('scan club-server'); await page.locator('#command').press('Enter');
@@ -224,31 +243,30 @@ test('walk to all five devices; old tools, scoring, save and mission guards stay
   expect(JSON.parse(save).game.active).toBe('services');
   await closeAndResume(page);
   // Leave the server suite through the same physical doorway, then the whiteboard.
-  await aim(page,-5.3,1.65,0); await walkUntil(page,'KeyW',{axis:'z',gt:0});
-  await aim(page,0,1.65,0); await walkUntil(page,'KeyW',{axis:'x',gt:-.1});
+  await walkTo(page,2.4,.1);
   await aim(page,2,1.7,-.82);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_Whiteboard');
   await page.keyboard.press('KeyE'); await expect(page.locator('#tool-source')).toContainText('화이트보드');
   await expect(page.locator('#hint')).toHaveText('힌트 보기 (0/3)');
   await closeAndResume(page);
   // Network bench along its clear southern approach.
-  await aim(page,0,1.65,3.8); await walkUntil(page,'KeyW',{axis:'z',gt:3.5});
-  await aim(page,7,1.65,3.8); await walkUntil(page,'KeyW',{axis:'x',gt:6.85});
+  await walkTo(page,5.3,2.0);
   await aim(page,7,1.06,1.65);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_Router');
+  await capture(page,'06-network-bench.png');
   await page.keyboard.press('KeyE'); await expect(page.locator('#panel-settings')).toBeVisible();
   await expect(page.locator('#port-8080')).toHaveValue('allow');
   await closeAndResume(page);
   // The records room has its own actual door, independent of the server suite.
-  await aim(page,5.3,1.65,3.8); await walkUntil(page,'KeyW',{axis:'x',lt:5.4});
-  await aim(page,5.3,1.65,0); await walkUntil(page,'KeyW',{axis:'z',lt:.1});
+  await walkTo(page,5.3,-.6);
   await aim(page,5.3,1.45,-2);
   await expect.poll(async()=> (await diagnostics(page)).target).toBe('DOOR_RecordsRoom');
   await page.keyboard.press('KeyE');
   await expect.poll(async()=> (await diagnostics(page)).doors.find(d=>d.name==='DOOR_RecordsRoom').angle).toBeCloseTo(95*Math.PI/180,2);
-  await aim(page,5.3,1.65,-5.9); await walkUntil(page,'KeyW',{axis:'z',lt:-5.8});
+  await walkTo(page,6.2,-7.0);
   await aim(page,7.4,1.2,-7.45);
-  await walkUntil(page,'KeyW',{target:'INTERACT_FileCabinet'});
+  await expect.poll(async()=> (await diagnostics(page)).target).toBe('INTERACT_FileCabinet');
+  await capture(page,'07-records-access.png');
   await page.keyboard.press('KeyE'); await expect(page.locator('#panel-files')).toBeVisible();
   await expect(page.locator('#tool-source')).toContainText('자료 보관함');
   await closeAndResume(page);
@@ -296,7 +314,7 @@ test('all original missions finish inside the 3D overlay and restore after reloa
   await expect(page.locator('#results')).toBeVisible(); await expect(page.locator('#score')).toHaveText('100 / 100');
   const save=await savedGame(page);
   expect(JSON.parse(save).game.missions.every(m=>m.verified)).toBe(true);
-  await page.reload(); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await page.reload(); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.locator('#world-notes').click(); await expect(page.locator('#results')).toBeVisible();
   await expect(page.locator('.mission-step.complete')).toHaveCount(4);
 });
@@ -310,7 +328,7 @@ test('model failure offers retry and 2D continuation; no external requests',asyn
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
   await page.unroute('**/assets/models/security_lab.glb');
   await page.locator('#scene-retry').click();
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.locator('#scene-fallback').click(); await expect(page.locator('#lab-tools')).toBeVisible();
   await page.locator('#command').fill('https://example.com'); await page.locator('#command').press('Enter');
   expect(external).toEqual([]);
@@ -319,9 +337,12 @@ test('model failure offers retry and 2D continuation; no external requests',asyn
 test('unresponsive model has a bounded loading timeout',async({page},testInfo)=>{
   test.skip(!main3D(testInfo));
   await page.clock.install();
-  await page.route('**/assets/models/security_lab.glb',()=>new Promise(()=>{}));
+  let requested;
+  const request=new Promise(resolve=>{requested=resolve;});
+  await page.route('**/assets/models/security_lab.glb',()=>{requested();return new Promise(()=>{});});
   await page.goto('/?view=3d');
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','loading');
+  await request;
   await page.clock.fastForward(21000);
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
   await page.locator('#scene-fallback').click(); await expect(page.locator('#mission-title')).toBeVisible();
@@ -344,7 +365,7 @@ test('first launch opens 2D without requesting optional 3D assets',async({page})
 for(const blocked of ['src/scene3d.js','vendor/three/build/three.core.js','src/scene3d.css']) {
   test(`3D retry recovers ${blocked} without reloading the working game`,async({page},testInfo)=>{
     test.skip(!main3D(testInfo));
-    test.setTimeout(60000);
+    test.setTimeout(process.env.CI ? 180000 : 60000);
     const raw=await seedV2(page,await tutorialComplete());
     await page.goto('/?view=2d'); await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');
     await page.locator('#hint').click(); const saved=await savedGame(page);
@@ -362,7 +383,7 @@ for(const blocked of ['src/scene3d.js','vendor/three/build/three.core.js','src/s
     const fresh=[];
     page.on('request',request=>{if(new URL(request.url()).pathname.startsWith('/__scene__/'))fresh.push(request.url());});
     await page.locator('#scene-retry').click();
-    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+    await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
     expect(fresh.some(url=>url.includes('src/scene3d.js'))).toBe(true);
     expect(appRequests).toBe(0); expect(await page.evaluate(()=>window.originalGameDocument)).toBe(true);
     expect(await savedGame(page)).toBe(saved);
@@ -380,10 +401,10 @@ for(const blocked of ['src/scene3d.js','vendor/three/build/three.core.js','src/s
 test('view preference persists independently and explicit 2D wins over saved 3D',async({page},testInfo)=>{
   test.skip(!main3D(testInfo));
   await page.goto('/'); await page.locator('#view-switch').click();
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   expect(await page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('3d');
   expect(await savedGame(page)).toBeNull();
-  await page.goto('/'); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await page.goto('/'); await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.goto('/?view=2d'); await expect(page.locator('#lab-tools')).toBeVisible();
   await expect.poll(()=>page.evaluate(key=>localStorage.getItem(key),VIEW_KEY)).toBe('2d');
   await page.goto('/'); await expect(page.locator('#lab-world')).toBeHidden();
@@ -455,7 +476,7 @@ test('v0.3 v2 progress and legacy original survive toggles, location return and 
   const legacy=JSON.stringify(encodeGame(state,{legacy:true}));
   await page.addInitScript(({key,legacy})=>localStorage.setItem(key,legacy),{key:SAVE_KEY,legacy});
   await page.goto('/?view=3d');
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');
   await page.locator('#world-reset').click();
   await page.locator('#world-2d').click();
@@ -468,7 +489,7 @@ test('v0.3 v2 progress and legacy original survive toggles, location return and 
   await expect(page.locator('#lab-world')).toHaveAttribute('data-state','error');
   expect(await savedGame(page)).toBe(raw);
   await page.unroute('**/assets/models/security_lab.glb'); await page.locator('#scene-retry').click();
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   expect(await savedGame(page)).toBe(raw);
   expect(await page.evaluate(key=>localStorage.getItem(key),SAVE_KEY)).toBe(legacy);
   await page.locator('#world-notes').click();
@@ -499,7 +520,7 @@ test('Pointer Lock rejection stays paused and offers retry or 2D',async({page},t
     };
   });
   await page.goto('/?view=3d');
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.locator('#scene-start').click(); await expect(page.locator('#scene-message')).toContainText('2D');
   expect((await diagnostics(page)).pointerLocked).toBe(false);
   await expect(page.locator('#scene-cover')).toBeVisible();
@@ -528,7 +549,7 @@ test('lost WebGL context never becomes ready on retry before a restored first fr
   expect(await page.locator('#lab-canvas').evaluate(canvas=>canvas.getContext('webgl2').isContextLost())).toBe(true);
   expect(await savedGame(page)).toBe(raw);
   await page.evaluate(()=>window.contextRecovery.restoreContext());
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   const restored=await diagnostics(page);
   expect(restored.contextLost).toBe(false); expect(restored.firstFrameReady).toBe(true);
   expect(restored.renderedFrames).toBeGreaterThan(lost.renderedFrames);
@@ -566,7 +587,7 @@ test('3D tools preserve native dialogs and reject stale saves from another tab',
   await expect(page.locator('#notice')).toContainText('다른 탭'); await page.locator('#hint').click();
   expect(await savedGame(page)).toBe(latest);
   await page.locator('#reload-progress').click();
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   await page.locator('#world-notes').click(); await expect(page.locator('#hint')).toHaveText('힌트 보기 (2/3)');
   expect(await savedGame(page)).toBe(latest);
 });
@@ -588,11 +609,14 @@ test('validated import remains usable inside the 3D overlay',async({page},testIn
 test('@windows-edge packaged 3D model displays an actual first frame',async({page},testInfo)=>{
   test.skip(!desktop3D(testInfo));
   await page.goto('/?view=3d');
-  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:25000});
+  await expect(page.locator('#lab-world')).toHaveAttribute('data-state','ready',{timeout:READY_TIMEOUT});
   const d=await diagnostics(page);
   expect(d.firstFrameReady).toBe(true); expect(d.renderedFrames).toBeGreaterThan(0);
   expect(d.drawCalls).toBeGreaterThan(0); expect(d.colliders).toBeGreaterThan(25);
   await expect(page.locator('#scene-start')).toBeVisible();
+  // Pausing must not monopolize a software graphics runner or the user's CPU.
+  await page.waitForTimeout(250);
+  expect((await diagnostics(page)).renderedFrames).toBe(d.renderedFrames);
 });
 
 test('@windows-edge door opening and WASD move through the physical doorway',async({page},testInfo)=>{

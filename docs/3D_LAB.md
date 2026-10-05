@@ -19,15 +19,15 @@ Windows 10/11 x64에서 EXE를 실행한다. Python·Node.js·Blender 설치는 
 
 ## 오류와 저장
 
-3D 준비는 20초 이내에 완료하거나 오류를 안내한다. 그래픽 복구가 끝나기 전에는 탐색할 수 없다. 다시 불러오기 또는 2D 이어하기를 사용한다. 3D 전환·위치 복귀·재시도는 미션을 초기화하지 않는다.
+모듈·스타일 또는 모델 전송이 20초간 응답하지 않으면 오류를 안내한다. 대용량 모델의 디코딩·셰이더·첫 화면 준비는 최대 60초이며, 모듈 준비 시간과는 별도다. 그래픽 복구가 끝나기 전에는 탐색할 수 없다. 다시 불러오기 또는 2D 이어하기를 사용한다. 3D 전환·위치 복귀·재시도는 미션을 초기화하지 않는다.
 
 진행은 브라우저·프로필·주소별로 저장한다. 주소를 옮길 때는 진행 내보내기/가져오기를 사용한다. 전체 초기화와 위치 복귀는 별도 기능이다.
 
 ## 모델과 개발
 
-Blender로 제작한 24 × 23m 실습실과 약 4.16MB의 GLB, Three.js를 EXE에 포함한다. 실행 중 외부 다운로드는 없다. 학교 PC의 성능과 교육 효과는 추가 검증이 필요하다.
+Corporate 04의 24 × 23m 실습실(업무석 25 + SOC 관리자석 1), 6개 서버랙과 2개 네트워크 벤치를 사용한다. 약 184.6MB GLB에 697만 삼각형과 원본 해상도의 PBR 이미지를 포함하며, 고품질 PC 환경을 우선한다. 낮은 사양의 PC에서는 2D 도구 화면을 사용할 수 있다. 실행 중 외부 다운로드는 없다.
 
-모델 제작: `blender --background --python scripts/build_security_lab.py -- assets/models/security_lab.glb Security_Lab_Source.blend`.
+모델 및 Blender 원본은 Git LFS로 관리한다. 복제 후 `git lfs install`과 `git lfs pull`을 실행한다. Windows 빌드와 CI도 LFS를 내려받는다. 재내보내기 절차는 [Corporate 통합](CORPORATE_INTEGRATION.md)에 있다. 기존 `build_security_lab.py`는 최초 프로토타입 제작용이다.
 
 소스 실행: `python run.py`. Python과 Node 서버는 시작 시 파일을 캐시하므로 수정 뒤 다시 시작한다.
 

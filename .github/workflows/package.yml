@@ -23,6 +23,8 @@ jobs:
     runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -47,7 +49,9 @@ jobs:
           python -m unittest discover -s tests/server
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test standalone Windows launcher and game
-        timeout-minutes: 15
+        # The full-size Corporate asset is checked in Chromium, mobile and Edge
+        # on software graphics; all required tests must finish before packaging.
+        timeout-minutes: 25
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./tests/windows_launcher.ps1

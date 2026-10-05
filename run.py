@@ -30,6 +30,7 @@ REQUIRED_FILES = {
     'src/scene-entry.js': 'text/javascript; charset=utf-8',
 }
 OPTIONAL_FILES = {
+    'assets/credits.txt': 'text/plain; charset=utf-8',
     'src/collision.js': 'text/javascript; charset=utf-8',
     'src/player3d.js': 'text/javascript; charset=utf-8',
     'src/interaction3d.js': 'text/javascript; charset=utf-8',
@@ -43,6 +44,8 @@ OPTIONAL_FILES = {
     'vendor/three/examples/jsm/utils/BufferGeometryUtils.js': 'text/javascript; charset=utf-8',
     'vendor/three/examples/jsm/utils/SkeletonUtils.js': 'text/javascript; charset=utf-8',
     'vendor/three/examples/jsm/controls/PointerLockControls.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/libs/meshopt_decoder.module.js': 'text/javascript; charset=utf-8',
+    'vendor/three/examples/jsm/environments/RoomEnvironment.js': 'text/javascript; charset=utf-8',
 }
 PUBLIC_FILES = {**REQUIRED_FILES, **OPTIONAL_FILES}
 try:
@@ -52,7 +55,7 @@ except (OSError, AttributeError):
     _guard = ''  # The launcher reports unreadable assets before opening a listener.
 STARTUP_HASH = base64.b64encode(hashlib.sha256(_guard.encode()).digest()).decode()
 CSP = (
-    "default-src 'self'; script-src 'self' 'sha256-" + STARTUP_HASH + "'; style-src 'self'; "
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-" + STARTUP_HASH + "'; style-src 'self'; "
     "connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )

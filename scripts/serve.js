@@ -11,6 +11,7 @@ const types = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.glb': 'model/gltf-binary',
+  '.txt': 'text/plain; charset=utf-8',
 };
 const requiredFiles = [
   'index.html', 'src/bootstrap.js', 'src/app.js', 'src/engine.js',
@@ -18,6 +19,7 @@ const requiredFiles = [
   'src/labbridge.js', 'src/scene-entry.js',
 ];
 const optionalFiles = [
+  'assets/credits.txt',
   'src/collision.js', 'src/player3d.js', 'src/interaction3d.js',
   'src/scene3d.js', 'src/batch3d.js', 'src/scene3d.css',
   'assets/models/security_lab.glb',
@@ -26,6 +28,8 @@ const optionalFiles = [
   'vendor/three/examples/jsm/utils/BufferGeometryUtils.js',
   'vendor/three/examples/jsm/utils/SkeletonUtils.js',
   'vendor/three/examples/jsm/controls/PointerLockControls.js',
+  'vendor/three/examples/jsm/libs/meshopt_decoder.module.js',
+  'vendor/three/examples/jsm/environments/RoomEnvironment.js',
 ];
 const publicFiles = new Set([...requiredFiles, ...optionalFiles]);
 const assets = new Map();
@@ -66,7 +70,7 @@ if (guard === undefined) throw new Error('index.html: startup guard missing');
 const startupHash = createHash('sha256').update(guard).digest('base64');
 const version = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).version;
 const headers = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'sha256-" + startupHash + "'; style-src 'self'; connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-" + startupHash + "'; style-src 'self'; connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff',
   'Cache-Control': 'no-store',
   'X-Security-Lab-Version': version,

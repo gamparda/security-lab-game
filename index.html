@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#111a28">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-m3X0T7Cfyid8U2HUdHQ+RHLSA48NGjWLjusnSVQw7Dw='; style-src 'self'; connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-m3X0T7Cfyid8U2HUdHQ+RHLSA48NGjWLjusnSVQw7Dw='; style-src 'self'; connect-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Security Lab · 보안 체험 게임</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="src/loading.css">
@@ -143,7 +143,7 @@
       </div>
       <section class="hint-panel"><div><p class="eyebrow">NEED A CLUE?</p><h2>막히면 힌트를 확인하세요.</h2><p id="hint-copy">개념 → 확인할 위치 → 다음 행동 순서로 안내합니다.</p></div><button id="hint">힌트 보기 (0/3)</button></section>
       <section id="results" class="results" tabindex="-1" hidden><p class="eyebrow">CASE CLOSED</p><h2>조사를 완료했습니다.</h2><p>원인과 대응, 정상 기능 유지 여부를 함께 검증했습니다.</p><div id="result-list"></div></section>
-      <footer><span>포트·로그인: 시뮬레이션 / SHA-256: 실제 연산</span><div><button id="reset-mission">현재 미션 초기화</button><button id="reset-all">전체 초기화</button></div></footer>
+      <footer><span>포트·로그인: 시뮬레이션 / SHA-256: 실제 연산 · <a href="assets/credits.txt" target="_blank" rel="noopener">에셋 출처</a></span><div><button id="reset-mission">현재 미션 초기화</button><button id="reset-all">전체 초기화</button></div></footer>
     </main>
     <dialog id="import-dialog" aria-labelledby="import-title"><form method="dialog"><h2 id="import-title">진행 가져오기</h2><p>Security Lab에서 내보낸 진행 JSON을 선택하세요. 현재 저장을 백업한 뒤 교체합니다.</p><label for="progress-file">게임 진행 파일 · 최대 128KiB</label><input id="progress-file" type="file" accept=".json,application/json"><p id="import-message" role="status"></p><div class="dialog-actions"><button value="cancel">취소</button><button id="confirm-import" class="primary" value="confirm" disabled>가져오기</button></div></form></dialog>
     <dialog id="reset-dialog" aria-labelledby="reset-title"><form method="dialog"><h2 id="reset-title">진행을 초기화할까요?</h2><p id="reset-description"></p><div class="dialog-actions"><button value="cancel">취소</button><button class="primary" value="confirm">초기화</button></div></form></dialog>

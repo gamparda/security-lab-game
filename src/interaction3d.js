@@ -6,7 +6,12 @@ export class Interaction {
     this.model=model; this.camera=camera; this.player=player; this.openTool=openTool;
     this.ray=new Raycaster(); this.ray.far=REACH;
     this.doors=[]; this.target=null;
+    this.raycastMeshes=[];
     model.traverse(object => {
+      if(object.isMesh && this.visible(object)) {
+        object.geometry.computeBoundingBox();
+        this.raycastMeshes.push(object);
+      }
       if (object.name.startsWith('DOOR_') && object.userData.interaction === 'door') {
         const bounds = object.userData.collisionBounds;
         const local = new Box3(new Vector3(bounds[0],bounds[2],-bounds[4]),new Vector3(bounds[3],bounds[5],-bounds[1]));
@@ -37,7 +42,7 @@ export class Interaction {
   findTarget() {
     this.camera.updateMatrixWorld();
     this.ray.setFromCamera(new Vector2(0,0),this.camera);
-    const hits=this.ray.intersectObject(this.model,true);
+    const hits=this.ray.intersectObjects(this.raycastMeshes,false);
     for (const hit of hits) {
       if (!hit.object.isMesh || !this.visible(hit.object)) continue;
       let object=hit.object;
@@ -47,7 +52,7 @@ export class Interaction {
       }
       // The nearest opaque non-interactive surface blocks interaction through walls.
       const material=Array.isArray(hit.object.material) ? hit.object.material[hit.face.materialIndex] : hit.object.material;
-      if (!material?.transparent || material.opacity>.5) return null;
+      if (material?.userData.interactionOpaque ?? (!material?.transparent || material.opacity>.5)) return null;
     }
     return null;
   }

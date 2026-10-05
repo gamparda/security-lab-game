@@ -30,6 +30,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          lfs: true
       - name: Check release version
         id: version
         run: |
@@ -69,6 +70,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify package run
+        # Downloaded release assets are verified below; this checkout only
+        # provides release scripts and does not need the authoring LFS files.
         id: package
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,16 +1,20 @@
 import * as THREE from '../vendor/three/build/three.module.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../vendor/three/examples/jsm/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from '../vendor/three/examples/jsm/environments/RoomEnvironment.js';
 import { Player } from './player3d.js';
 import { Interaction } from './interaction3d.js';
 import { observeMission, requestTool } from '/src/labbridge.js';
-import { batchStatic } from './batch3d.js';
+import { batchStatic, isSoftwareRenderer, prepareMaterials } from './batch3d.js';
 
 const $ = id => document.getElementById(id);
-const PREPARATION_TIMEOUT = 20000;
+const PREPARATION_TIMEOUT = 60000;
+const MAX_MODEL_BYTES = 256 * 1024 * 1024;
 let renderer, graphicsContext, scene, camera, model, player, interaction;
 let ready = false, firstFrameReady = false, contextLost = false, mode = '2d', toolsOpen = false;
 let initialized = false, generation = 0, preparation, previousTime = 0, renderedFrames = 0;
 let frames = 0, frameMs = 0, fps = 0, noticeTimer, mission = null, currentTab = 'terminal', toolOpener;
+let softwareRenderer = false, redraw = true, environmentTarget;
 
 function message(title, text) {
   $('scene-title').textContent = title;
@@ -112,8 +116,9 @@ function resize() {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   // A conservative default is usable on integrated GPUs and software rendering.
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, softwareRenderer ? .65 : 1));
   renderer.setSize(innerWidth, innerHeight, false);
+  redraw = true;
 }
 async function waitForContext(token, signal) {
   checkAttempt(token, signal);
@@ -147,11 +152,14 @@ async function ensureRenderer(token, signal) {
   contextLost = graphicsContext.isContextLost();
   await waitForContext(token, signal);
   renderer = new THREE.WebGLRenderer({ canvas: $('lab-canvas'), context: graphicsContext, ...options });
+  softwareRenderer = isSoftwareRenderer(graphicsContext);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
   renderer.shadowMap.enabled = false;
   scene = new THREE.Scene();
+  rebuildEnvironment();
+  scene.environmentIntensity = .45;
   scene.background = new THREE.Color('#20333e');
   camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, .05, 70);
   scene.add(new THREE.HemisphereLight(0xd3e8f5, 0x65737b, 2.0));
@@ -162,38 +170,56 @@ async function ensureRenderer(token, signal) {
   scene.add(light, light.target);
   resize();
 }
-async function readModel(signal, token) {
-  // This fixed local URL never contains game commands or user-provided addresses.
-  const response = await fetch('assets/models/security_lab.glb', { signal });
-  if (!response.ok) throw new Error('모델 파일을 읽을 수 없습니다.');
-  const total = Number(response.headers.get('Content-Length')) || 0;
-  if (total > 32 * 1024 * 1024) throw new Error('모델 파일 크기가 제한을 초과했습니다.');
-  const reader = response.body.getReader(), chunks = [];
-  let received = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    checkAttempt(token, signal);
-    if (done) break;
-    received += value.byteLength;
-    if (received > 32 * 1024 * 1024) { await reader.cancel(); throw new Error('모델 파일 크기가 제한을 초과했습니다.'); }
-    chunks.push(value);
-    $('scene-progress').value = total ? Math.min(80, received / total * 80) : 25;
-    $('scene-message').textContent = `실습실을 불러오는 중 · ${(received / 1024 / 1024).toFixed(1)} MB`;
-  }
-  const buffer = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
-  return buffer.buffer;
+function rebuildEnvironment() {
+  environmentTarget?.dispose();
+  const room = new RoomEnvironment(), pmrem = new THREE.PMREMGenerator(renderer);
+  environmentTarget = pmrem.fromScene(room, .04, .1, 100, {size: softwareRenderer ? 64 : 256});
+  scene.environment = environmentTarget.texture;
+  room.dispose(); pmrem.dispose();
+}
+async function readModel(controller, token) {
+  const signal = controller.signal;
+  let stallTimer;
+  const activity = () => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => controller.abort(new Error('모델 파일 응답 시간이 초과되었습니다.')), 20000);
+  };
+  activity();
+  try {
+    // This fixed local URL never contains game commands or user-provided addresses.
+    const response = await fetch('assets/models/security_lab.glb', { signal });
+    if (!response.ok) throw new Error('모델 파일을 읽을 수 없습니다.');
+    const total = Number(response.headers.get('Content-Length')) || 0;
+    if (total > MAX_MODEL_BYTES) throw new Error('모델 파일 크기가 제한을 초과했습니다.');
+    const reader = response.body.getReader(), chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      checkAttempt(token, signal);
+      if (done) break;
+      received += value.byteLength;
+      activity();
+      if (received > MAX_MODEL_BYTES) { await reader.cancel(); throw new Error('모델 파일 크기가 제한을 초과했습니다.'); }
+      chunks.push(value);
+      $('scene-progress').value = total ? Math.min(80, received / total * 80) : 25;
+      $('scene-message').textContent = `실습실을 불러오는 중 · ${(received / 1024 / 1024).toFixed(1)} MB`;
+    }
+    const buffer = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
+    return buffer.buffer;
+  } finally { clearTimeout(stallTimer); }
 }
 function installModel(loaded) {
   loaded.updateMatrixWorld(true);
+  prepareMaterials(loaded, softwareRenderer);
   const boxes = [];
   loaded.traverse(object => {
     if (object.name.startsWith('COLLIDER_')) { boxes.push(new THREE.Box3().setFromObject(object)); object.visible = false; }
     if (object.isMesh && !object.name.startsWith('COLLIDER_')) {
       object.castShadow = false;
       object.receiveShadow = false;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material.map) material.map.anisotropy = 1;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material.map) material.map.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     }
   });
   const spawnObject = loaded.getObjectByName('SPAWN_Player');
@@ -232,6 +258,7 @@ async function renderFirstFrame(token, signal) {
         renderer.render(scene, camera);
         if (!healthyContext() || renderer.info.render.calls === 0) throw new Error('3D 첫 화면을 표시하지 못했습니다.');
         renderedFrames++;
+        redraw = false;
         frame = requestAnimationFrame(() => {
           try {
             checkAttempt(token, signal);
@@ -255,11 +282,11 @@ function loadModel() {
   $('lab-world').dataset.state = 'loading';
   $('lab-world').setAttribute('aria-busy', 'true');
   $('scene-cover').hidden = false;
-  message('실습실 준비 중', '공간과 조사 장비를 불러오고 있습니다.');
+  message('실습실 준비 중', contextLost ? '그래픽 연결 복원을 기다리고 있습니다.' : '공간과 조사 장비를 불러오고 있습니다.');
   $('scene-progress').hidden = false;
   $('scene-progress').value = 0;
   $('scene-start').hidden = true;
-  $('scene-retry').hidden = true;
+  $('scene-retry').hidden = !contextLost;
   attempt.promise = (async () => {
     const timer = setTimeout(() => controller.abort(new Error('준비 시간이 초과되었습니다.')), PREPARATION_TIMEOUT);
     let pendingModel;
@@ -269,15 +296,23 @@ function loadModel() {
         await ensureRenderer(token, signal);
         checkAttempt(token, signal);
         if (!model) {
-          const bytes = await readModel(signal, token);
+          const bytes = await readModel(controller, token);
           $('scene-progress').value = 85;
           $('scene-message').textContent = '장비와 충돌 경계를 준비하고 있습니다.';
-          const loaded = await new GLTFLoader().parseAsync(bytes, new URL('assets/models/', location.href).href);
+          const loaded = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes, new URL('assets/models/', location.href).href);
           if (signal.aborted || token !== generation || mode !== '3d') { clearResources(loaded.scene); checkAttempt(token, signal); }
           pendingModel = loaded.scene;
           installModel(pendingModel);
           pendingModel = undefined;
         }
+        checkAttempt(token, signal);
+        $('scene-progress').value = 95;
+        $('scene-message').textContent = '표면과 조명을 준비하고 있습니다.';
+        // Warm visible shader variants asynchronously before the first draw.
+        // Hidden originals need no programs; clones share the actual GPU data.
+        const warmup = new THREE.Group();
+        scene.traverseVisible(object => { if (object.isMesh) warmup.add(object.clone(false)); });
+        await renderer.compileAsync(warmup, camera, scene);
         checkAttempt(token, signal);
         await renderFirstFrame(token, signal);
       })();
@@ -353,6 +388,10 @@ function animate(time) {
   const dt = Math.min(elapsed / 1000, .5);
   previousTime = time;
   if (mode !== '3d' || document.hidden || !renderer || !ready || !healthyContext() || toolsOpen) return;
+  // A paused view is static. Re-render only after resize/reset or an unfinished
+  // door animation, leaving the browser free to process dialogs and input.
+  const movingDoor = interaction.doors.some(door => Math.abs(door.target-door.angle) > .0001);
+  if (!player.controls.isLocked && !movingDoor && !redraw) return;
   const steps = Math.max(1, Math.ceil(dt / .1));
   for (let step = 0; step < steps; step++) {
     interaction.update(dt / steps);
@@ -366,6 +405,7 @@ function animate(time) {
     renderer.render(scene, camera);
     if (!healthyContext()) return;
     renderedFrames++;
+    redraw = false;
   } catch (error) { cancelPreparation(error); return; }
   frameMs += elapsed;
   frames++;
@@ -387,7 +427,7 @@ export function get3DDiagnostics() {
     target: interaction?.target?.name ?? null,
     doors: interaction?.doors.map(door => ({ name: door.object.name, angle: door.angle, target: door.target, pivot: door.object.position.toArray() })) ?? [],
     colliders: player?.boxes.length ?? 0, drawCalls: renderer?.info.render.calls ?? 0,
-    triangles: renderer?.info.render.triangles ?? 0, fps, renderer: rendererVersion,
+    triangles: renderer?.info.render.triangles ?? 0, fps, renderer: rendererVersion, softwareRenderer,
   };
 }
 export function init3D() {
@@ -409,6 +449,7 @@ export function init3D() {
     $('world-notes').addEventListener('click', () => openTool('brief', '조사 노트 / 현재 미션'));
     $('world-reset').addEventListener('click', () => {
       player?.reset();
+      redraw = true;
       stopInput();
       $('scene-cover').hidden = false;
       pauseMessage();
@@ -435,7 +476,12 @@ export function init3D() {
     });
     $('lab-canvas').addEventListener('webglcontextrestored', () => {
       contextLost = graphicsContext?.isContextLost() ?? false;
-      if (mode === '3d' && !ready && !preparation) void loadModel().catch(() => {});
+      // This listener predates Three's listener. Recreate the generated light
+      // texture only after Three has rebuilt its WebGL state for the new context.
+      queueMicrotask(() => {
+        if (renderer && scene && !contextLost) rebuildEnvironment();
+        if (mode === '3d' && !ready && !preparation) void loadModel().catch(() => {});
+      });
     });
     document.addEventListener('keydown', event => {
       if (mode !== '3d' || nativeDialogOpen()) return;
