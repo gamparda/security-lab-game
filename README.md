@@ -10,6 +10,8 @@
 
 Windows 10/11 64비트용입니다. 게임 파일과 Python이 EXE에 포함되어 있어 소스코드·Python·Node.js를 따로 설치하지 않습니다. 진행은 브라우저와 접속 주소별로 저장됩니다. 다른 주소로 옮길 때는 진행 내보내기/가져오기를 사용하세요.
 
+공식 플레이 환경은 **Windows 10/11 + 최신 Google Chrome Desktop + 키보드·마우스**입니다. 최소 1280×720, 기준 1920×1080입니다. 모바일·터치·Edge·Firefox·Safari/WebKit은 공식 지원하지 않습니다. 실행창은 Chrome을 직접 엽니다.
+
 ## 미션
 
 | 미션 | 목표 |
@@ -29,6 +31,8 @@ Windows 10/11 64비트용입니다. 게임 파일과 Python이 EXE에 포함되�
 python run.py
 ```
 
-검증: `npm ci` → `npx playwright install chromium` → `npm run check`.
+검증: Windows에 최신 Google Chrome 설치 → `npm ci` → `npm run check`. Chrome 단일 Playwright 프로젝트이며 브라우저를 별도로 다운로드하지 않습니다.
+
+3D 일시정지 화면에서 Native/Ultra/Quality/Balanced/Performance 화질을 선택합니다. 기본 Quality는 75%로 3D만 렌더링하고 HTML은 원래 해상도를 유지합니다. F3으로 성능 정보를 확인합니다. [런타임·CI 최적화](docs/CHROME_RUNTIME.md).
 
 [구조](docs/PROJECT_REVIEW.md) · [계획](docs/PLAN.md) · [안정화 계획](docs/STABILIZATION_PLAN.md) · [다음 작업](docs/ROADMAP.md) · [검증](docs/VALIDATION.md) · [배포](docs/DEPLOYMENT.md)

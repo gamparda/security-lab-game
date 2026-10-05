@@ -109,9 +109,8 @@ export function initSceneView() {
     if (!sceneModule) void show3D();
   });
   const query = new URLSearchParams(location.search).get('view');
-  const coarse = matchMedia('(pointer: coarse)').matches;
   if (query === '2d') remember('2d');
-  if (query === '3d' || query !== '2d' && !coarse && preference() === '3d') void show3D();
+  if (query === '3d' || query !== '2d' && preference() === '3d') void show3D();
 }
 export function get3DDiagnostics() {
   return sceneModule?.get3DDiagnostics() || { mode, ready: false, firstFrameReady: false };

@@ -3,80 +3,16 @@ on:
   workflow_call:
     inputs:
       runner:
-        description: Target OS runner
-        required: true
+        required: false
+        default: windows-latest
         type: string
   workflow_dispatch:
-    inputs:
-      runner:
-        description: Target OS runner
-        type: choice
-        required: true
-        options:
-          - windows-latest
-          - macos-14
-          - ubuntu-latest
 permissions:
   contents: read
 jobs:
   package:
-    runs-on: ${{ inputs.runner }}
+    runs-on: windows-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - name: Install Linux GUI libraries
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
-      - run: python -m pip install pyinstaller==6.16.0
-      - run: npm ci
-      - run: npm run vendor -- --check
-      - run: python scripts/package.py
-      - run: npx playwright install chromium
-      - name: Test engine and server
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          npm test
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m unittest discover -s tests/server
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Test standalone Windows launcher and game
-        # The full-size Corporate asset is checked in Chromium, mobile and Edge
-        # on software graphics; all required tests must finish before packaging.
-        timeout-minutes: 25
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./tests/windows_launcher.ps1
-        env:
-          SECURITYLAB_HEADED: '1'
-      - name: Test packaged Unix executable
-        if: runner.os == 'macOS'
-        run: GAME_SERVER='dist/SecurityLab --smoke-test' npm run check
-      - name: Test packaged Linux executable
-        if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' npm run check
-        env:
-          GAME_SERVER: dist/SecurityLab --smoke-test
-          SECURITYLAB_HEADED: '1'
-      - name: Upload packaged browser diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: packaged-browser-diagnostics-${{ runner.os }}
-          path: test-results/
-          retention-days: 7
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SecurityLab-${{ runner.os }}-${{ runner.arch }}
-          path: |
-            dist/SecurityLab*
-          if-no-files-found: error
-          retention-days: 90
+      - uses: ./.github/actions/windows-build

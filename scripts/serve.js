@@ -11,6 +11,7 @@ const types = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.glb': 'model/gltf-binary',
+  '.png': 'image/png',
   '.txt': 'text/plain; charset=utf-8',
 };
 const requiredFiles = [
@@ -22,6 +23,8 @@ const optionalFiles = [
   'assets/credits.txt',
   'src/collision.js', 'src/player3d.js', 'src/interaction3d.js',
   'src/scene3d.js', 'src/batch3d.js', 'src/scene3d.css',
+  'src/city3d.js', 'src/visibility3d.js', 'src/upscale3d.js',
+  'assets/environment/city-sunset.png',
   'assets/models/security_lab.glb',
   'vendor/three/build/three.module.js', 'vendor/three/build/three.core.js',
   'vendor/three/examples/jsm/loaders/GLTFLoader.js',
@@ -102,3 +105,4 @@ const server = createServer((req, res) => {
   }
 });
 server.listen(Number(process.env.PORT || 5173), '127.0.0.1', () => console.log('Security Lab: http://localhost:' + server.address().port));
+// Runtime modules and environment images share the strict Python allowlist.

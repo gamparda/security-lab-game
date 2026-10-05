@@ -73,8 +73,11 @@ def main():
     status.pack(pady=(7, 14))
 
     def open_game():
-        if not webbrowser.open(url):
-            status.configure(text='브라우저에서 이 주소를 열어주세요: ' + url)
+        chrome = next((Path(base) / 'Google/Chrome/Application/chrome.exe'
+                       for base in [os.environ.get('PROGRAMFILES', ''), os.environ.get('PROGRAMFILES(X86)', ''), os.environ.get('LOCALAPPDATA', '')]
+                       if base and (Path(base) / 'Google/Chrome/Application/chrome.exe').is_file()), None)
+        if chrome is None or not webbrowser.BackgroundBrowser(str(chrome)).open(url):
+            status.configure(text='Google Chrome을 설치한 뒤 이 주소를 열어주세요: ' + url)
 
     def stop_server():
         nonlocal server, thread

@@ -11,7 +11,7 @@
 | 3 | 단일 인스턴스·포트 기억·128KiB 진행 가져오기·백업. [PR 13](https://github.com/nu4ddi4/security-lab-game/pull/13). |
 | 4 | 미션 ID·정의 검사·저장 변환·다음 행동·키보드/작은 화면 검사. |
 
-실제 모바일 기기·Safari·200% 브라우저 확대·스크린리더·입문자 3–5명 시연은 수동 검증으로 남는다. Chromium·Firefox·WebKit과 Windows EXE는 CI에서 검사한다.
+공식 지원과 CI 대상은 Windows 10/11 + 최신 Google Chrome Desktop이다. 200% 확대·스크린리더·입문자 3–5명 시연은 수동 검증으로 남는다. 모바일·터치·Edge·Firefox·WebKit 지원은 종료했다.
 
 ## 확인한 문제
 

@@ -1,0 +1,51 @@
+name: Windows Chrome build
+description: Core checks, standalone EXE, one Chrome scene startup, artifact
+runs:
+  using: composite
+  steps:
+    - name: Fetch runtime GLB only
+      shell: pwsh
+      run: git lfs pull --include="assets/models/security_lab.glb" --exclude=""
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: pip
+        cache-dependency-path: requirements-build.txt
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: npm
+    - name: Install build dependencies
+      shell: pwsh
+      run: |
+        python -m pip install -r requirements-build.txt
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        npm ci
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - name: Core engine, collision, asset and server checks
+      shell: pwsh
+      run: |
+        npm test
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        python -m unittest discover -s tests/server
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - name: Build Windows EXE
+      shell: pwsh
+      run: python scripts/package.py
+    - name: Standalone launcher and Chrome smoke
+      shell: pwsh
+      run: ./tests/windows_launcher.ps1
+    - name: Upload Windows EXE
+      uses: actions/upload-artifact@v4
+      with:
+        name: SecurityLab-Windows-X64
+        path: dist/SecurityLab.exe
+        if-no-files-found: error
+        retention-days: 90
+    - name: Upload diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-chrome-diagnostics
+        path: test-results/
+        retention-days: 7

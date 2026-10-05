@@ -8,19 +8,6 @@ export function isSoftwareRenderer(gl) {
   const name=info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
   return /swiftshader|llvmpipe|softpipe|software|basic render|\bwarp\b/i.test(name);
 }
-export function prepareMaterials(model, software) {
-  if(!software) return;
-  const materials=new Set();
-  model.traverse(o=>{if(o.isMesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) materials.add(m);});
-  for(const material of materials) {
-    if(material.transmission>0) {
-      material.userData.interactionOpaque=!material.transparent || material.opacity>.5;
-      material.opacity=material.transmission>.9 ? .18 : .4;
-      material.transmission=0; material.transparent=true; material.depthWrite=false;
-      material.needsUpdate=true;
-    }
-  }
-}
 // Keep functional roots separate. Repeats share GPU data; unique geometry
 // stays indexed and is batched spatially to bound memory and raycast work.
 export function batchStatic(model) {
@@ -32,7 +19,7 @@ export function batchStatic(model) {
     for(let parent=object;parent;parent=parent.parent) if(parent.userData.interaction || !parent.visible) return;
     const mat=object.material;
     // Glass keeps individual sorting and multi-material meshes keep their groups.
-    if(Array.isArray(mat) || mat.transparent || mat.transmission>0) return;
+    if(Array.isArray(mat) || mat.transparent || mat.transmission>0 || object.geometry.userData.runtimeLOD) return;
     object.geometry.computeBoundingBox();
     const key=object.geometry.uuid+'|'+mat.uuid;
     if(!repeats.has(key)) repeats.set(key,[]);
@@ -41,11 +28,16 @@ export function batchStatic(model) {
   const matrix=object=>new Matrix4().multiplyMatrices(inverse,object.matrixWorld);
   for(const objects of repeats.values()) {
     if(objects.length>1) {
-      const first=objects[0], mesh=new InstancedMesh(first.geometry,first.material,objects.length);
+      // A single scene-wide instance would defeat useful frustum culling.
+      const cells=new Map();for(const o of objects){const p=o.getWorldPosition(new Vector3()),key=`${Math.floor(p.x/4)}:${Math.floor(p.z/4)}`;if(!cells.has(key))cells.set(key,[]);cells.get(key).push(o);}
+      for(const cell of cells.values()) {
+      if(cell.length<2)continue;
+      const first=cell[0], mesh=new InstancedMesh(first.geometry,first.material,cell.length);
       mesh.name='ENV_Static_Instances'; mesh.castShadow=first.castShadow; mesh.receiveShadow=true;
-      objects.forEach((object,index)=>mesh.setMatrixAt(index,matrix(object)));
+      cell.forEach((object,index)=>mesh.setMatrixAt(index,matrix(object)));
       mesh.computeBoundingSphere(); mesh.computeBoundingBox(); model.add(mesh);
-      for(const object of objects) object.visible=false;
+      for(const object of cell) object.visible=false;
+      }
       continue;
     }
     const object=objects[0], geometry=object.geometry;

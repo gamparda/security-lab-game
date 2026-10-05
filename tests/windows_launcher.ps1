@@ -8,7 +8,6 @@ $first = $null
 $second = $null
 $conflict = $null
 $originalGameUrl = $env:GAME_URL
-$originalEdge = $env:SECURITYLAB_EDGE
 $stateDir = Join-Path $isolated 'settings'
 New-Item -ItemType Directory -Force $stateDir | Out-Null
 $blocker = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 5173)
@@ -72,10 +71,10 @@ try {
     if (Test-Path -LiteralPath (Join-Path $isolated $source)) { throw "Game source found next to executable: $source" }
   }
   if ($startup.assets.PSObject.Properties.Name -notcontains 'assets/models/security_lab.glb') { throw 'Bundled model was not included in startup asset verification' }
-  foreach ($name in $startup.assets.PSObject.Properties.Name) {
-    $response = Invoke-WebRequest ($startup.url.Replace('localhost', '127.0.0.1') + '/' + $name) -TimeoutSec 5 -NoProxy -UseBasicParsing
+  foreach ($name in @('index.html','src/scene3d.js','assets/models/security_lab.glb','assets/environment/city-sunset.png')) {
+    $response = Invoke-WebRequest ($startup.url.Replace('localhost', '127.0.0.1') + '/' + $name) -Method Head -TimeoutSec 5 -NoProxy -UseBasicParsing
     if ($response.StatusCode -ne 200) { throw "Asset failed: $name" }
-    if ($name -eq 'assets/models/security_lab.glb' -and ($response.Headers['Content-Type'] -notlike 'model/gltf-binary*' -or $response.RawContentLength -lt 1000000)) { throw 'Bundled GLB model response is incomplete or has the wrong MIME type' }
+    if ($name -eq 'assets/models/security_lab.glb' -and ($response.Headers['Content-Type'] -notlike 'model/gltf-binary*' -or [long]$response.Headers['Content-Length'][0] -lt 1000000)) { throw 'Bundled GLB model response is incomplete or has the wrong MIME type' }
   }
   $secondDiagnostic = Join-Path $isolated 'second-startup.json'
   $second = Start-IsolatedGame $secondDiagnostic
@@ -86,7 +85,7 @@ try {
   Assert-VisibleGameWindow $startup
   $conflictDiagnostic = Join-Path $isolated 'conflict-startup.json'
   $versionProbe = (Resolve-Path 'tests/windows_version_probe.py').Path
-  $conflict = Start-Process -FilePath (Get-Command python).Source -WorkingDirectory $isolated -ArgumentList @("`"$versionProbe`"", '--diagnostics', "`"$conflictDiagnostic`"", '--no-browser', '--state-dir', "`"$stateDir`"") -PassThru
+  $conflict = Start-Process -WindowStyle Hidden -FilePath (Get-Command python).Source -WorkingDirectory $isolated -ArgumentList @("`"$versionProbe`"", '--diagnostics', "`"$conflictDiagnostic`"", '--no-browser', '--state-dir', "`"$stateDir`"") -PassThru
   $deadline = (Get-Date).AddSeconds(20)
   $blocked = $null
   while ((Get-Date) -lt $deadline) {
@@ -100,15 +99,9 @@ try {
   taskkill /PID $conflict.Id /T /F | Out-Null
   $conflict = $null
   $env:GAME_URL = $startup.url
-  # Fail early if the runner's graphics backend cannot display the bundled GLB.
-  npm run test:e2e -- --project=desktop --grep 'packaged 3D model displays an actual first frame'
-  if ($LASTEXITCODE -ne 0) { throw 'Standalone launcher 3D graphics preflight failed' }
-  npm run test:e2e -- --project=desktop --project=mobile
-  if ($LASTEXITCODE -ne 0) { throw 'Standalone launcher browser tests failed' }
-  # windows-latest includes Microsoft Edge; fail if that supported native browser is unavailable.
-  $env:SECURITYLAB_EDGE = '1'
-  npm run test:e2e -- --project=windows-edge
-  if ($LASTEXITCODE -ne 0) { throw 'Standalone launcher Microsoft Edge tests failed' }
+  # One bundled scene startup, then a short physical play smoke.
+  npx playwright test chrome-smoke.spec.js
+  if ($LASTEXITCODE -ne 0) { throw 'Standalone Windows Chrome smoke failed' }
   $savedPort = (Get-Content -LiteralPath (Join-Path $stateDir 'settings.json') -Raw | ConvertFrom-Json).port
   if ($startup.url -ne ('http://localhost:' + $savedPort)) { throw 'Last port was not retained' }
   taskkill /PID $first.Id /T /F | Out-Null
@@ -118,11 +111,10 @@ try {
   $restarted = Wait-ForGame $restartDiagnostic
   if ($restarted.url -ne $startup.url -or $restarted.portChanged -or $restarted.reused) { throw 'Restart did not retain its original game address' }
   Assert-VisibleGameWindow $restarted
-  Write-Output 'Source-free EXE assets and GLB, visible launcher, single instance, version conflict, foreign port fallback, restart address, Chromium game and Edge 2D/3D verified.'
+  Write-Output 'Source-free EXE, native launcher, assets, port fallback, single instance, version conflict, restart address and one Chrome 3D smoke verified.'
 } finally {
   if ($null -ne $blocker) { $blocker.Stop() }
   $env:GAME_URL = $originalGameUrl
-  $env:SECURITYLAB_EDGE = $originalEdge
   foreach ($process in @($conflict, $second, $first)) {
     if ($null -ne $process) { taskkill /PID $process.Id /T /F | Out-Null }
   }

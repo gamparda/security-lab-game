@@ -1,0 +1,795 @@
+{
+  "geometry": {
+    "COLLIDER_Archive_Desk": "a4c20510d25572c3f24e58630ade1a5a805e1ea9b5b9c4ec49ba7f65a73f473a",
+    "COLLIDER_Chair_0": "731f10f2c45eceaaa9351bae299b7f9fb8a234147d294cfb3ffd397d70439795",
+    "COLLIDER_Chair_1": "268373ea80ef6912aac9ef2a09de8dd226ce32fa6a4af78e9e1342b90a3d0872",
+    "COLLIDER_Chair_2": "6250741e9f6e39ddd136696123e3c279942c1d5e36f19f18f6741e511a71eb37",
+    "COLLIDER_Chair_3": "c521c6017dc77d86d478167c0236f2b5a01d72cb91a0d1f18e2765be1410ae52",
+    "COLLIDER_Corporate_Shared_Shelving": "8b64800b70f833346fc0f0795eb729d11d005c13b0fcaba6d9fe856f5671931a",
+    "COLLIDER_Corporate_Shared_Storage": "969a7c842aea956e62bf6836ed891ab696d4f5879c65e4a68ae30022f0a679bb",
+    "COLLIDER_Corporate_SOC_Display_Stand": "775be2e789cdd49849f30d0c6d830a2c3e82d2b5e13d5ad9e07382c72eff86f4",
+    "COLLIDER_Desk_0": "49af94177008b5e68f0d1a67bdcc4b6f4033363c3c79043b4812466e6a05023b",
+    "COLLIDER_Desk_1": "1b7fd9dc68f5dfb4ff7c42a2a8a4d0789f160507bca72677b0f46e634cb01573",
+    "COLLIDER_Desk_2": "35aaae3d39bb5d1d9527b973ecea53d4f41f9d959bc10109c68001f2ad1f9025",
+    "COLLIDER_Desk_3": "90e21802c2f6d1ce3b59e3570027c2845e887d974b16c9f9b245a8423cf7a351",
+    "COLLIDER_FileCabinets": "e375a9b6a2c15ca062cf2418462d1a498a5df17a0de2adbe6aacb50af963e806",
+    "COLLIDER_Network_Bench": "d30e66b0ab20e61cf0e237c9a28f8754ea04d4236418b1c3a7f2016a78ac37d4",
+    "COLLIDER_Partition_Center_Upper": "3bc99ef727b5b4fb95952f052c69fb3aa4f0829551ebca4e0f1e9f6933a5c6a1",
+    "COLLIDER_Partition_Left_Upper": "8ef6b54e1e27d1bcd2bfb01956c3371de78897e0a0d4b79838daeaca129b92e5",
+    "COLLIDER_Partition_RecordRight_Upper": "d45e5ca544765b277a23c1d627fc14f4851776eecc2f763c60f7c68a5b99d97f",
+    "COLLIDER_Rack_0": "4e6a9dfc1bd21cc61bdd73d2cae21707305e959e69973debcf47335267023a79",
+    "COLLIDER_Rack_1": "e88695abd5710cbf845a8c90fdc198a263e1a67cbc8e447b66ee0018fe0d086f",
+    "COLLIDER_Rack_2": "733f463b6171f9e2e82ebf2a5df8d22c4726a5252503bf881aa00e7dcd570c78",
+    "COLLIDER_Rack_3": "862848fbffca4e7de02b4bc7406ef9516db8c0d2e2884bd882262e143db26fe3",
+    "COLLIDER_Rack_4": "f9aa23c5b52fe7ff7526b1e9a9f1baf4a5e4459579245d64b89a131928842b69",
+    "COLLIDER_Rack_5": "b779c8b4eea6b6e70b684973e917d0af6a21bc8f3b9819e04616ed7ef70ff2f7",
+    "COLLIDER_Reveal_Main_Left": "2410b20be73846900f3d83f60df1bb791cc8953db62870b10f22762f707b2cee",
+    "COLLIDER_Reveal_Main_Right": "6bd774292572996648df838dbcbeb2ff7b6f8b411b24bda938ba510f9ed2d91c",
+    "COLLIDER_Reveal_RecordsRoom_Left": "878eefe31202483dad9a1b795f4a789531f3e483eada5f385b336a538525b76b",
+    "COLLIDER_Reveal_RecordsRoom_Right": "6641712f936d99315a379ca9ffd86a8e1cb8b3cc90ef2bc6155c691e1698d96a",
+    "COLLIDER_Reveal_ServerRoom_Left": "1164feb7e86b3e6e2be52dd8156b0cae2582bdd959cb94f099c31ee8a9d517ed",
+    "COLLIDER_Reveal_ServerRoom_Right": "54d1bb916e45eec8d2ed3852a9f663b24aea175d040ea6b3f7d71f36d9a8fe7f",
+    "COLLIDER_Support_Printer_Cabinet": "c2e61f34bd4f20de95a8074ced3b874e9665f489fa9fbb9d25f108a65e188c2a",
+    "COLLIDER_Wall_East": "16026a3d0ce07de42f8998cfe785bf9776f568776ddbbdeecfeb432d7f676f5a",
+    "COLLIDER_Wall_Entry_2.2": "b82de57a95a635c43b62ae3b01903fde22031a85f986e882fd848b6845891687",
+    "COLLIDER_Wall_Entry_-2.2": "57be7461ef0b6239666c73d25046cb6539d713536e32521ce4aaf6dcda8ae5ff",
+    "COLLIDER_Wall_Entry_Back": "86a84eb1f88fd51ce77ca3e765603b504042bdc2d4c0ba9193f990cede8c5c91",
+    "COLLIDER_Wall_North": "bf7c93c73801da74ac7203f8078d684cd5c293801c926ca2df5a5f2e77064584",
+    "COLLIDER_Wall_Partition_Center": "8f7a10a470bdc0a38ce3c887f0fd7099431386457df88819ba787a9ff646fee7",
+    "COLLIDER_Wall_Partition_Header": "44e3d81d16edf07c70a7702024cb4049649035d9f63027c79e816217bfb45d3b",
+    "COLLIDER_Wall_Partition_Left": "9935e6b2f219ec14b0e5c15741e84aa07bd84f0781cd95dcce26896e24d44a00",
+    "COLLIDER_Wall_Partition_RecordRight": "6425efc19b514d8857b54e42ff1465be4fe18ce4677a546cb7a43b7697a24b53",
+    "COLLIDER_Wall_Records_Header": "cc30df257657e22fb38ff9c082e4ab46227d0d43a5e8cd40b2a01b3c63fc2654",
+    "COLLIDER_Wall_Server_Divider": "009a91191f090d35690d61317f39420f2ea679de098302f5249a853763e020f8",
+    "COLLIDER_Wall_South_Header": "a1ddc91144604157783c290b77612c68d88f3ff5d094f919c030e4b394f07723",
+    "COLLIDER_Wall_South_Left": "e5ae994d477cbce48a1515ce050625a288b35ba91e343988daef5be276a0f724",
+    "COLLIDER_Wall_South_Right": "e9e0e2c8c78e39abba4cdc2812f4f1ed3b1b6ab38da625b48db9362c65d0d691",
+    "COLLIDER_Wall_West_Lower": "2b90f7e88d0e4b35a05ff9da37498542c761745080e293ed9dbce35fc0836eb3",
+    "COLLIDER_Wall_West_Upper": "7df7a5e44d7b8f3ac8253e4626103b5fd6d1867c1ddd751ffc467ddde5f10e42",
+    "COLLIDER_West_Window": "0b2b2fed9a68b0666a10d14050061cbcb61327061d574c62c3f45b5d82e67699",
+    "COLLIDER_Whiteboard": "f8449a751804c07128caab000a69a2061218f35c866f8225f97a8000e763db94",
+    "COLLIDER_Corporate_Chair_13": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_13": "e8f9aba037e8fceb7e3e2113efa9e669ccdc27945fb65655f784c58d2f31b99e",
+    "COLLIDER_Corporate_Chair_14": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_14": "e8f9aba037e8fceb7e3e2113efa9e669ccdc27945fb65655f784c58d2f31b99e",
+    "COLLIDER_Corporate_Chair_15": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_15": "e8f9aba037e8fceb7e3e2113efa9e669ccdc27945fb65655f784c58d2f31b99e",
+    "COLLIDER_Corporate_Chair_16": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_16": "2aa8c956b1c16574e41b39747e59cc654573f294f3969a3fcbb44061d5e5be67",
+    "COLLIDER_Corporate_Chair_17": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_17": "ece6976c02d07b7c8c3c58afe98de21843d8ffa9285cf2e9e1b04cef06cf1c52",
+    "COLLIDER_Corporate_Chair_18": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_18": "f570b6ad50b8442c83c3c075fd0d83b2e859f2f9d7d78b80ae4db46addb71eb7",
+    "COLLIDER_Corporate_Chair_19": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_19": "f570b6ad50b8442c83c3c075fd0d83b2e859f2f9d7d78b80ae4db46addb71eb7",
+    "COLLIDER_Corporate_Chair_20": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_20": "f570b6ad50b8442c83c3c075fd0d83b2e859f2f9d7d78b80ae4db46addb71eb7",
+    "COLLIDER_Corporate_Chair_21": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Corporate_Desk_21": "f570b6ad50b8442c83c3c075fd0d83b2e859f2f9d7d78b80ae4db46addb71eb7",
+    "COLLIDER_Corporate_Chair_22": "dc531a1686f5b65387cb5e8d8b94c9da83dc970d367affc2c4da1c831fd68103",
+    "COLLIDER_Corporate_Chair_23": "dc531a1686f5b65387cb5e8d8b94c9da83dc970d367affc2c4da1c831fd68103",
+    "COLLIDER_Corporate_Chair_24": "dc531a1686f5b65387cb5e8d8b94c9da83dc970d367affc2c4da1c831fd68103",
+    "COLLIDER_Corporate_Chair_25": "dc531a1686f5b65387cb5e8d8b94c9da83dc970d367affc2c4da1c831fd68103",
+    "DOOR_Main_Leaf": "90df87d60e170fa39c4ea52fd82f0d63e945f09a16355588f6da4bc0e2ebbef9",
+    "CORP_Door_Closer_And_Lock_DOOR_Main": "6e194244c78b79b2c0966ccb5692ff32773865e4f01f11ad7176290479583061",
+    "CORP_Door_Glass_Film_DOOR_Main": "ca3f6afaea43fdfd3cfba2f402dccd2481321ba42acd8f94647eb6c201c54354",
+    "DOOR_RecordsRoom_Leaf": "90df87d60e170fa39c4ea52fd82f0d63e945f09a16355588f6da4bc0e2ebbef9",
+    "CORP_Door_Closer_And_Lock_DOOR_RecordsRoom": "6e194244c78b79b2c0966ccb5692ff32773865e4f01f11ad7176290479583061",
+    "CORP_Door_Glass_Film_DOOR_RecordsRoom": "ca3f6afaea43fdfd3cfba2f402dccd2481321ba42acd8f94647eb6c201c54354",
+    "DOOR_ServerRoom_Leaf": "90df87d60e170fa39c4ea52fd82f0d63e945f09a16355588f6da4bc0e2ebbef9",
+    "CORP_Door_Closer_And_Lock_DOOR_ServerRoom": "6e194244c78b79b2c0966ccb5692ff32773865e4f01f11ad7176290479583061",
+    "CORP_Door_Glass_Film_DOOR_ServerRoom": "ca3f6afaea43fdfd3cfba2f402dccd2481321ba42acd8f94647eb6c201c54354",
+    "COLLIDER_Network_Training_Bench_02": "e75f71042b1400e22c8f0ab048b746bc547bf0b7bc215045199a014bb5291e7f",
+    "COLLIDER_Training_Chair_04": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Training_Desk_04": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108",
+    "COLLIDER_Training_Chair_05": "1497bda0c826409e89c10da5fa943115e525ee977882f1e1cc5ae6cbd4164bb9",
+    "COLLIDER_Training_Desk_05": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108",
+    "COLLIDER_Training_Chair_06": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Training_Desk_06": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108",
+    "COLLIDER_Training_Chair_07": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Training_Desk_07": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108",
+    "COLLIDER_Training_Chair_08": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Training_Desk_08": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108",
+    "COLLIDER_Training_Chair_09": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Training_Desk_09": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108",
+    "COLLIDER_Training_Chair_10": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Training_Desk_10": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108",
+    "COLLIDER_Training_Chair_11": "dbe9c3fe48db0ca1a04c4f13bfdba0ce9584109f9a9ff9b73c11af12c99eec77",
+    "COLLIDER_Training_Desk_11": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108",
+    "COLLIDER_Training_Chair_12": "60b7df8b97f7d3e9aa51eda4910c2026e553a4c69f432390b7921dc91504166c",
+    "COLLIDER_Training_Desk_12": "4b026c2df5d56f355d188ff7af30ef7a7a8311d395641d7b3c6044cb76d66108"
+  },
+  "nodes": [
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Archive_Desk"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Chair_0"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Chair_1"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Chair_2"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Chair_3"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Shared_Shelving"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Shared_Storage"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_SOC_Display_Stand"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Desk_0"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Desk_1"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Desk_2"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Desk_3"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_FileCabinets"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Network_Bench"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Partition_Center_Upper"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Partition_Left_Upper"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Partition_RecordRight_Upper"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Rack_0"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Rack_1"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Rack_2"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Rack_3"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Rack_4"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Rack_5"
+    },
+    {
+      "extras": {
+        "collision": true,
+        "purpose": "New finished jamb; original collision proxies retained"
+      },
+      "name": "COLLIDER_Reveal_Main_Left"
+    },
+    {
+      "extras": {
+        "collision": true,
+        "purpose": "New finished jamb; original collision proxies retained"
+      },
+      "name": "COLLIDER_Reveal_Main_Right"
+    },
+    {
+      "extras": {
+        "collision": true,
+        "purpose": "New finished jamb; original collision proxies retained"
+      },
+      "name": "COLLIDER_Reveal_RecordsRoom_Left"
+    },
+    {
+      "extras": {
+        "collision": true,
+        "purpose": "New finished jamb; original collision proxies retained"
+      },
+      "name": "COLLIDER_Reveal_RecordsRoom_Right"
+    },
+    {
+      "extras": {
+        "collision": true,
+        "purpose": "New finished jamb; original collision proxies retained"
+      },
+      "name": "COLLIDER_Reveal_ServerRoom_Left"
+    },
+    {
+      "extras": {
+        "collision": true,
+        "purpose": "New finished jamb; original collision proxies retained"
+      },
+      "name": "COLLIDER_Reveal_ServerRoom_Right"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Support_Printer_Cabinet"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_East"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Entry_2.2"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Entry_-2.2"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Entry_Back"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_North"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Partition_Center"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Partition_Header"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Partition_Left"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Partition_RecordRight"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Records_Header"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_Server_Divider"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_South_Header"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_South_Left"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_South_Right"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_West_Lower"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Wall_West_Upper"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_West_Window"
+    },
+    {
+      "extras": {
+        "collision": true
+      },
+      "name": "COLLIDER_Whiteboard"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_13"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_13"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_14"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_14"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_15"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_15"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_16"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_16"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_17"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_17"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_18"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_18"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_19"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_19"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_20"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_20"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_21"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Desk_21"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_22"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_23"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_24"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Corporate_Chair_25"
+    },
+    {
+      "name": "DOOR_Main_Leaf"
+    },
+    {
+      "extras": {
+        "openAngleDegrees": 100,
+        "interaction": "door",
+        "label": "출입문",
+        "width": 1.28,
+        "height": 2.3,
+        "collisionBounds": [
+          0,
+          -0.06,
+          0,
+          1.28,
+          0.06,
+          2.29
+        ]
+      },
+      "name": "DOOR_Main",
+      "translation": [
+        -0.6399999856948853,
+        0,
+        9.859999656677246
+      ]
+    },
+    {
+      "name": "DOOR_RecordsRoom_Leaf"
+    },
+    {
+      "extras": {
+        "openAngleDegrees": 95,
+        "interaction": "door",
+        "label": "출입문",
+        "width": 1.28,
+        "height": 2.3,
+        "collisionBounds": [
+          0,
+          -0.06,
+          0,
+          1.28,
+          0.06,
+          2.29
+        ]
+      },
+      "name": "DOOR_RecordsRoom",
+      "translation": [
+        4.659999847412109,
+        0,
+        -2.119999885559082
+      ]
+    },
+    {
+      "name": "DOOR_ServerRoom_Leaf"
+    },
+    {
+      "extras": {
+        "openAngleDegrees": 95,
+        "interaction": "door",
+        "label": "출입문",
+        "width": 1.28,
+        "height": 2.3,
+        "collisionBounds": [
+          0,
+          -0.06,
+          0,
+          1.28,
+          0.06,
+          2.29
+        ]
+      },
+      "name": "DOOR_ServerRoom",
+      "translation": [
+        -5.940000057220459,
+        0,
+        -2.119999885559082
+      ]
+    },
+    {
+      "extras": {
+        "interaction": "admin",
+        "label": "관리 PC / 조사 도구"
+      },
+      "name": "INTERACT_AdminPC",
+      "translation": [
+        -5,
+        0,
+        3
+      ]
+    },
+    {
+      "extras": {
+        "interaction": "files",
+        "label": "자료 보관함 / 파일 비교"
+      },
+      "name": "INTERACT_FileCabinet",
+      "translation": [
+        7.400000095367432,
+        0,
+        -7.800000190734863
+      ]
+    },
+    {
+      "extras": {
+        "interaction": "settings",
+        "label": "네트워크 장비 / 방어 설정"
+      },
+      "name": "INTERACT_Router",
+      "translation": [
+        7,
+        0,
+        2
+      ]
+    },
+    {
+      "extras": {
+        "interaction": "terminal",
+        "label": "자료 서버 / 가상 터미널"
+      },
+      "name": "INTERACT_ServerRack",
+      "translation": [
+        -8,
+        0,
+        -5
+      ]
+    },
+    {
+      "extras": {
+        "interaction": "brief",
+        "label": "화이트보드 / 미션과 힌트"
+      },
+      "name": "INTERACT_Whiteboard",
+      "translation": [
+        2,
+        0,
+        -0.8199999928474426
+      ]
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Network_Training_Bench_02"
+    },
+    {
+      "extras": {
+        "eyeHeight": 1.65,
+        "bodyHeight": 1.8,
+        "yaw": 0
+      },
+      "name": "SPAWN_Player",
+      "translation": [
+        0,
+        0,
+        11.699999809265137
+      ]
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_04"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_04"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_05"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_05"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_06"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_06"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_07"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_07"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_08"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_08"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_09"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_09"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_10"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_10"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_11"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_11"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Chair_12"
+    },
+    {
+      "extras": {
+        "collision": "solid"
+      },
+      "name": "COLLIDER_Training_Desk_12"
+    }
+  ]
+}

@@ -64,7 +64,6 @@ test('시작 스크립트가 차단돼도 오류 정보와 복사·재시도 수
   await page.locator('#loading-error summary').click();
   await expect(page.locator('#loading-detail')).toHaveValue(/src\/bootstrap.js/);
   await expect(page.locator('#copy-startup-error')).toBeVisible();
-  // Firefox can issue a speculative request for the parser-created script.
   expect([...new Set(requests)].sort()).toEqual(['', '?retry=1']);
   expect(requests.filter(query => query === '?retry=1')).toHaveLength(1);
   await page.unroute('**/src/bootstrap.js*');
@@ -166,10 +165,10 @@ test('다음 행동은 키보드로 조사하고 설명 위치로 이동할 수 
   await expect(page.locator('#next')).toBeVisible();
 });
 
-test('320px·640px 화면에서 가로 넘침이 없고 접근성 구조가 유지됨', async ({ page }) => {
+test('지원하는 PC 화면에서 가로 넘침이 없고 접근성 구조가 유지됨', async ({ page }) => {
   await seedGame(page, await missionState(1));
-  for (const width of [320, 640]) {
-    await page.setViewportSize({ width, height: 800 });
+  for (const width of [1280, 1920]) {
+    await page.setViewportSize({ width, height: width===1280?720:1080 });
     await page.getByRole('tab', { name: '방어 설정' }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await expect(page.locator('#port-443')).toBeVisible();
@@ -500,6 +499,13 @@ async function tutorial(page) {
 }
 test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 없음', async ({ page }) => {
   const requests = [], errors = [];
+  // Read the served HTML through the test transport. This isolates the game
+  // from OS web-filter scripts injected into chrome.exe (e.g. local AdGuard),
+  // without disabling the user's security software or allowing foreign URLs.
+  await page.route('**/*',async route=>{
+    if(route.request().resourceType()==='document'){const response=await route.fetch();await route.fulfill({response});}
+    else await route.continue();
+  });
   page.on('request', request => requests.push(request.url()));
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/?view=2d');
@@ -549,7 +555,7 @@ test('전체 플레이: 방어와 재검증, 저장, 초기화, 외부 요청 �
   await expect(page.locator('#score')).toHaveText('0 / 100');
   await expect(page.locator('#results')).toBeHidden();
   expect(errors).toEqual([]);
-  expect(requests.every(url => new URL(url).hostname === 'localhost')).toBe(true);
+  expect(requests.filter(url => new URL(url).hostname !== 'localhost')).toEqual([]);
 });
 test('입력은 텍스트로 표시되고 외부 URL에 접속하지 않음', async ({ page }) => {
   await page.goto('/?view=2d'); await tutorial(page);

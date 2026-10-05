@@ -136,6 +136,8 @@ def pack(source, destination, blender_dir):
             primitive['attributes'] = {k:accessor_map[v] for k,v in primitive['attributes'].items()}
             if 'indices' in primitive:
                 primitive['indices'] = accessor_map[primitive['indices']]
+            for level in primitive.get('extras', {}).get('runtimeLOD', []):
+                level['indices'] = accessor_map[level['indices']]
     meshes, mesh_map, seen = [], {}, {}
     for i, mesh in enumerate(doc['meshes']):
         key = json.dumps({k:v for k,v in mesh.items() if k != 'name'}, sort_keys=True)
