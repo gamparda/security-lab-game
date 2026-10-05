@@ -57,3 +57,6 @@ SOFTWARE.
 Exterior sunset city panorama: supplied by the user as the project reference,
 image data unchanged; curved dome projection and restrained color grading at runtime.
 Near/mid/transition city, office envelope and facade shaders: project-generated.
+Corporate Interior 05: project-generated carpet, static contact AO and accessories;
+reuses the credited Poly Haven maple veneer, office stationery and chair assets.
+High-resolution authoring master is separate from the 2K runtime export.
