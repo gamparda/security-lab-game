@@ -6,7 +6,7 @@ import { Player } from './player3d.js';
 import { Interaction } from './interaction3d.js';
 import { observeMission, requestTool } from '/src/labbridge.js';
 import { batchStatic, isSoftwareRenderer } from './batch3d.js';
-import { createCity, refineGlass, restoreCityEnvironment } from './city3d.js';
+import { createCity, refineGlass, restoreCityEnvironment, CITY_SUN } from './city3d.js';
 import { prepareVisibility } from './visibility3d.js';
 import { Upscaler, RENDER_PRESETS } from './upscale3d.js';
 
@@ -175,7 +175,7 @@ async function ensureRenderer(token, signal) {
   light.position.set(-6, 3.1, 5);
   light.target.position.set(0, 0, 0);
   scene.add(light, light.target);
-  const sunset=new THREE.DirectionalLight(0xffb16b,.75);sunset.position.set(-60,12,0);scene.add(sunset);
+  const sunset=new THREE.DirectionalLight(0xffb16b,.75);sunset.position.copy(CITY_SUN).multiplyScalar(100);scene.add(sunset);
   upscaler=new Upscaler(renderer);
   resize();
 }
