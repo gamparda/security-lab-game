@@ -30,18 +30,38 @@ runs:
         python -m unittest discover -s tests/server
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     - name: Build Windows EXE
+      id: windows-exe
       shell: pwsh
-      run: python scripts/package.py
+      run: |
+        python scripts/package.py
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $binary = Get-Item -LiteralPath 'dist/SecurityLab.exe' -ErrorAction Stop
+        if ($binary.PSIsContainer -or $binary.Length -le 0) { throw 'Windows EXE missing or empty' }
+        "exe_bytes=$($binary.Length)" >> $env:GITHUB_OUTPUT
     - name: Standalone launcher and Chrome smoke
       shell: pwsh
       run: ./tests/windows_launcher.ps1
     - name: Upload Windows EXE
+      id: windows-artifact
       uses: actions/upload-artifact@v4
       with:
         name: SecurityLab-Windows-X64
         path: dist/SecurityLab.exe
         if-no-files-found: error
         retention-days: 90
+    - name: Windows artifact summary
+      shell: pwsh
+      env:
+        EXE_BYTES: ${{ steps.windows-exe.outputs.exe_bytes }}
+        ARTIFACT_URL: ${{ steps.windows-artifact.outputs.artifact-url }}
+      run: |
+        @"
+        ### Windows test build
+        [SecurityLab-Windows-X64]($env:ARTIFACT_URL)
+
+        Contains SecurityLab.exe ($env:EXE_BYTES bytes), verified by the standalone Chrome smoke.
+        This artifact step does not create a release or tag.
+        "@ >> $env:GITHUB_STEP_SUMMARY
     - name: Upload diagnostics
       if: failure()
       uses: actions/upload-artifact@v4

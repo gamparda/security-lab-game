@@ -13,8 +13,10 @@ body.lab-3d .topbar { position: fixed; top: 0; left: 0; right: 0; height: 70px; 
 .mission-hud .hud-stage { color: #68d9c1; margin-top: 14px; font-size: 11px; }
 .crosshair { position: absolute; top: 50%; left: 50%; width: 5px; height: 5px; border-radius: 50%; background: #ffffffc9; box-shadow: 0 0 0 3px #08131a60; pointer-events: none; }
 .crosshair.target { background: #70ffd1; box-shadow: 0 0 0 5px #5ccfa133; }
-.interaction-prompt { position: absolute; top: calc(50% + 32px); left: 50%; transform: translateX(-50%); padding: 10px 20px; border: 1px solid #7fdbca55; border-radius: 4px; background: #0a1927e6; font-size: 13px; white-space: nowrap; pointer-events: none; }
-.hud-action {border-top:1px solid #a6c4bd44;padding-top:10px;color:#b9d7cc;font-size:13px}
+.interaction-prompt { position: absolute; top: calc(50% + 32px); left: 50%; transform: translateX(-50%); max-width:calc(100vw - 40px); padding: 10px 20px; border: 1px solid #b4c2c755; border-radius: 4px; background: #0a1927e6; font-size: 13px; pointer-events: none; text-align:center; }
+.interaction-prompt strong{display:block;margin-bottom:5px;font-size:12px;color:#bccdce}
+.interaction-prompt span{display:block;word-break:keep-all}
+.interaction-prompt[data-tone="pending"]{border-color:#e0c376}.interaction-prompt[data-tone="warning"]{border-color:#d5a37b}.interaction-prompt[data-tone="normal"]{border-color:#78bda4}
 .device-observation {position:absolute;right:32px;top:148px;width:365px;max-height:58vh;overflow:hidden;padding:18px 20px;background:#18272ef2;border-left:3px solid #b4c2c7;border-radius:4px;pointer-events:none;color:#eef1ed;font-size:13px;box-shadow:0 8px 32px #0003}
 .device-observation[data-tone="normal"]{border-color:#78bda4}.device-observation[data-tone="warning"]{border-color:#d5a37b}.device-observation[data-tone="pending"]{border-color:#e0c376}
 .device-observation pre{white-space:pre-wrap;font:12px/1.65 "Malgun Gothic",sans-serif;max-height:45vh;overflow:hidden}.device-observation small{color:#b5c8ca}
@@ -45,7 +47,10 @@ body.lab-3d #lab-tools .intro { display: none; }
 
 /* Compact contextual guidance; no center overlay or new rendering pass. */
 .mission-hud .hud-location{font-size:11px;color:#adbabf;margin-top:10px}
-.mission-hud .hud-action{margin-top:12px;padding-top:12px;color:#e1ede9;line-height:1.6}
+.mission-hud .hud-next{border-top:1px solid #a6c4bd44;margin-top:12px;padding-top:12px}
+.mission-hud .hud-label{display:block;font-size:10px;color:#94abae;margin-bottom:4px}
+.mission-hud .hud-action{color:#e1ede9;line-height:1.6}
+.mission-hud .hud-reason{font-size:11px;color:#acbdc5;margin-top:7px;line-height:1.6}
 .device-observation{width:345px;max-height:none;font-size:13px}
 .device-observation #device-observation-status{color:#bccdce;font-size:12px;margin:8px 0}
 .device-observation pre{font-size:13px;line-height:1.8;margin:12px 0;max-height:none}
@@ -53,6 +58,7 @@ body.lab-3d #lab-tools .intro { display: none; }
 .device-observation small{font-size:11px}
 .onboarding-hint{position:absolute;left:34px;bottom:82px;max-width:340px;padding:13px 17px;background:#18272eed;border-left:3px solid #b4c2c7;border-radius:4px;pointer-events:none;font-size:12px;line-height:1.8;color:#dce7e8}
 .onboarding-hint small{display:block;color:#b4c2c7}
+.onboarding-hint #onboarding-goal{display:block;border-top:1px solid #b4c2c72b;margin-top:8px;padding-top:8px;color:#e1ede9}
 #recheck-notice{border-left:3px solid #e0c376;color:#ebd49a;margin:0 0 18px;padding:12px 16px}
 @media(max-height:800px){.device-observation{top:135px;padding:14px 17px}.device-observation pre{font-size:12px}.mission-hud{padding:17px}}
 

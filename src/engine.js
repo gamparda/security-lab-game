@@ -1,5 +1,5 @@
 import { MISSIONS, ORIGINAL_FILES, TAMPERED_BUDGET, COMMON_PASSWORDS, NORMAL_PASSWORD } from './missions.js';
-import {DEVICES,deviceCommands,requiredDevices,revisitDevice,deviceTool} from './devices.js';
+import {DEVICES,deviceCommands,requiredDevices,revisitDevice,deviceTool,deviceTask} from './devices.js';
 
 export function initialState() {
   return {
@@ -242,13 +242,14 @@ export function worldAction(state) {
   if(p.verified)return {mode:'complete',device:null,text:'검증 완료 · 조사 노트에서 결과와 다음 미션을 확인하세요.'};
   if(!devices.length)return {mode:'tool',device:null,text:'조사 노트에서 현재 목표와 다음 행동을 확인하세요.'};
   const missing=devices.find(device=>!p.spatial?.inspected.includes(device));
-  if(missing)return {mode:'inspect',device:missing,text:`${DEVICES[missing].label}에서 E로 ${id==='tutorial'?'승인서':'현장 근거'}를 확인하세요.`};
+  if(missing)return {mode:'inspect',device:missing,text:`${DEVICES[missing].label}에서 E로 ${id==='tutorial'?'승인서':'현장 근거'}를 확인하세요.`,reason:id==='tutorial'?'조사하기 전에 승인된 범위를 확인합니다.':id==='services'?'서버에서 노출 상태와 서비스 용도를 확인합니다.':id==='login'?'관제석에서 정상 로그인과 반복 실패를 함께 확인합니다.':missing==='INTERACT_FileCabinet'?'보관함의 승인 원본이 파일 비교의 기준입니다.':'분석 PC에서 현재 파일을 승인 원본과 비교합니다.'};
   const revisit=revisitDevice(id);
-  if(p.observations.changed&&!p.spatial.rechecked&&revisit)return {mode:'recheck',device:revisit,text:`설정 변경으로 이전 관찰이 만료됐습니다. ${DEVICES[revisit].label}에서 E로 재확인하세요.`};
+  if(p.observations.changed&&!p.spatial.rechecked&&revisit)return {mode:'recheck',device:revisit,text:`설정 변경으로 이전 관찰이 만료됐습니다. ${DEVICES[revisit].label}에서 E로 재확인하세요.`,reason:'F는 설정 도구입니다. 변경 결과는 현장에서 E로 확인합니다.'};
   const device=id==='services'?'INTERACT_Router':'INTERACT_AdminPC';
-  if(!explained(state))return {mode:'tool',device,text:`${DEVICES[device].label}에서 F · 조사 노트의 근거를 읽고 ${id==='tutorial'?'허용 범위를':'원인 설명을'} 선택하세요.`};
-  if(!defended(state))return {mode:'tool',device,text:`${DEVICES[device].label}에서 F · ${id==='integrity'?'파일 비교와 방어 설정':'방어 설정'}을 검토하세요.`};
-  return {mode:'verify',device,text:`${DEVICES[device].label}에서 F · 「현재 상태 재검증」으로 방어와 정상 기능을 함께 확인하세요.`};
+  const reason=id==='services'?'서버는 상태 확인, 방화벽은 접근 정책 변경을 담당합니다.':id==='integrity'?'보관함은 비교 기준, 분석 PC는 현재 파일의 검사·복구를 담당합니다.':id==='login'?'로그인 기록을 근거로 정책을 판단하고 변경합니다.':'E로 확보한 승인서를 조사 노트에서 읽고 판단합니다.';
+  if(!explained(state))return {mode:'tool',device,text:`${DEVICES[device].label}에서 F · 조사 노트의 근거를 읽고 ${id==='tutorial'?'허용 범위를':'원인 설명을'} 선택하세요.`,reason};
+  if(!defended(state))return {mode:'tool',device,text:`${DEVICES[device].label}에서 F · ${id==='integrity'?'파일 비교와 방어 설정':'방어 설정'}을 검토하세요.`,reason};
+  return {mode:'verify',device,text:`${DEVICES[device].label}에서 F · 「현재 상태 재검증」으로 방어와 정상 기능을 함께 확인하세요.`,reason:id==='tutorial'?'승인된 조사 범위와 선택한 설명을 최종 검증합니다.':'현장 확인만으로 완료되지 않습니다. 정상 기능 유지도 검증합니다.'};
 }
 function fieldFindings(state,device) {
   const p=progress(state),id=missionId(state),before=p.observations.before,changed=p.observations.changed;
@@ -282,7 +283,8 @@ export async function inspectDevice(state,device) {
   const ok=defended(state),rechecked=p.observations.changed&&device===revisitDevice(id);
   const status=rechecked?'변경 후 현장 재확인 · '+(ok?'정상 동작 확인':'문제 남음'):'현장 조사 완료';
   const findings=fieldFindings(state,device),next=worldAction(state).text;
-  return {device,label:DEVICES[device].label,status,findings,next,recorded:true,text:[status,...findings,'현장 단서가 조사 노트에 기록되었습니다.','다음: '+next].join('\n'),tone:informational?'neutral':ok?'normal':'warning'};
+  const evidence=MISSIONS[state.active].evidence;
+  return {device,label:DEVICES[device].label,status,findings,next,recorded:true,evidenceFound:evidence.filter(key=>p.clues.includes(key)).length,evidenceTotal:evidence.length,text:[status,...findings,'현장 단서가 조사 노트에 기록되었습니다.','다음: '+next].join('\n'),tone:informational?'neutral':ok?'normal':'warning'};
 }
 
 export function continueWithout3D(state) {
@@ -309,7 +311,7 @@ export function worldDevices(state) {
         if(!pending&&id==='integrity'&&device==='INTERACT_AdminPC')text+=`\n해시 ${p.hashes.length?p.hashes.filter(row=>!row.matches).length+'개 불일치':'재계산 필요'}`;
       }
     } else if(device==='INTERACT_Router'&&id==='services')text='서비스 접근 정책\nF · 접근 정책 편집';
-    return [device,{label:DEVICES[device].label,text,tone,objective:action.device===device,action:action.device===device?`${['tool','verify'].includes(action.mode)?'F':'E'} · ${action.mode==='recheck'?'재확인':action.mode==='verify'?'최종 검증':action.mode==='tool'?deviceTool(id,device).label:'현장 조사'}`:'',zone:DEVICES[device].zone}];
+    return [device,{label:DEVICES[device].label,text,tone,objective:action.device===device,action:action.device===device?`${['tool','verify'].includes(action.mode)?'F':'E'} · ${action.mode==='recheck'?'변경 결과 재확인':action.mode==='verify'?'최종 검증':action.mode==='tool'?deviceTool(id,device).label:deviceTask(id,device)}`:'',zone:DEVICES[device].zone}];
   }));
 }
 

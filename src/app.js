@@ -203,11 +203,11 @@ function render() {
   $('reset-mission').disabled = busy;
   $('reset-all').disabled = busy;
   $('recheck-notice').hidden=spatialAction.mode!=='recheck';
-  $('recheck-notice').textContent=spatialAction.mode==='recheck'?'설정 변경으로 이전 관찰이 만료됐습니다. F로 도구를 열어도 현장 재확인은 완료되지 않습니다.':'';
+  $('recheck-notice').textContent=spatialAction.mode==='recheck'?spatialAction.text+' F로 도구를 열어도 현장 재확인은 완료되지 않습니다.':'';
   renderSettings(); renderFiles(); renderComparison(); renderResults();
   publishMission({ id: missionId(state), missionId: missionId(state), active: state.active, title: m.title,
     objective: m.id==='tutorial'?'관제 PC에서 조사 권한을 확인하고 허용된 범위를 선택하세요.':m.objective, nextAction: action.text,
-    worldAction:spatialAction.text, objectiveDevice:spatialAction.device, actionMode:spatialAction.mode, evidenceTotal:m.evidence.length, evidenceFound:m.evidence.filter(key=>p.clues.includes(key)).length,
+    worldAction:spatialAction.text, worldReason:spatialAction.reason??'', objectiveDevice:spatialAction.device, actionMode:spatialAction.mode, evidenceTotal:m.evidence.length, evidenceFound:m.evidence.filter(key=>p.clues.includes(key)).length,
     stage: stage(state), score: score(state), clues: p.clues.length, busy, equipment:equipmentStatus(state), devices:worldDevices(state) });
   const commands = m.quickCommands;
   $('quick-commands').replaceChildren(...commands.map(command => {

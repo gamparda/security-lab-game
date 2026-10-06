@@ -544,10 +544,14 @@ test('spatial UX guides each required source, policy tool and factual recheck be
  await inspectDevice(s,'INTERACT_AdminPC');assert.equal(worldAction(s).mode,'tool');await runCommand(s,'verify');assert.equal(progress(s).verified,false);
  applyAnswer(s,0);await runCommand(s,'verify');nextMission(s);
  await inspectDevice(s,'INTERACT_ServerRack');assert.equal(worldAction(s).device,'INTERACT_Router');
+ const snapshot=structuredClone(s);assert.match(worldAction(s).reason,/서버는 상태 확인, 방화벽은 접근 정책 변경/);assert.deepEqual(s,snapshot,'context is read-only');
  applyPort(s,443,false);applyPort(s,8080,false);
  assert.equal(worldAction(s).mode,'recheck');assert.equal(stage(s),'장비 재확인 필요');assert.match(worldAction(s).text,/이전 관찰이 만료/);
+ assert.match(worldAction(s).reason,/현장에서 E/);assert.doesNotMatch(worldAction(s).reason,/443|8080|켜세요|끄세요/);
+ assert.equal(worldDevices(s).INTERACT_ServerRack.action,'E · 변경 결과 재확인');
  assert.equal(worldDevices(s).INTERACT_ServerRack.tone,'pending');assert.doesNotMatch(worldDevices(s).INTERACT_ServerRack.text,/443 FILTERED/);
  const r=await inspectDevice(s,'INTERACT_ServerRack');assert.match(r.text,/자료 열람 불가/);assert.match(r.text,/관리 접근 차단/);assert.equal(r.tone,'warning');
+ assert.equal(r.evidenceFound,r.evidenceTotal);
  assert.equal(worldAction(s).device,'INTERACT_Router');assert.equal(worldDevices(s).INTERACT_Router.objective,true);assert.equal(worldDevices(s).INTERACT_ServerRack.objective,false);
  await runCommand(s,'verify');assert.equal(progress(s).verified,false);
 });
@@ -558,7 +562,8 @@ test('concise field findings preserve login changes, separate baseline and hashe
  const before=structuredClone(s);const wrong=await inspectDevice(s,'INTERACT_FileCabinet');assert.equal(wrong.recorded,false);assert.equal(wrong.status,'현재 사건 조사 대상 아님');assert.match(wrong.next,/관제/);assert.deepEqual(s,before);
  applyLogin(s,{minLength:15,blockCommon:true,limitAttempts:true});const after=await inspectDevice(s,'INTERACT_AdminPC');assert.match(after.text,/무제한 → 제한됨/);assert.match(after.text,/0\/5개 허용/);
  applyAnswer(s,2);await runCommand(s,'verify');nextMission(s);
- assert.equal(worldAction(s).device,'INTERACT_FileCabinet');await inspectDevice(s,'INTERACT_FileCabinet');assert.equal(worldAction(s).device,'INTERACT_AdminPC');
+ assert.equal(worldAction(s).device,'INTERACT_FileCabinet');assert.match(worldAction(s).reason,/승인 원본.*기준/);
+ const baseline=await inspectDevice(s,'INTERACT_FileCabinet');assert.ok(baseline.evidenceFound<baseline.evidenceTotal);assert.equal(worldAction(s).device,'INTERACT_AdminPC');assert.match(worldAction(s).reason,/현재 파일.*승인 원본/);
  const hash=await inspectDevice(s,'INTERACT_AdminPC');assert.equal(hash.findings.length,3);assert.match(hash.text,/budget.csv · 승인 기준과 불일치/);
  restoreFile(s,'budget.csv');const restored=await inspectDevice(s,'INTERACT_AdminPC');assert.match(restored.text,/불일치 → 승인 기준과 일치/);
 });

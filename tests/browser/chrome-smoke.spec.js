@@ -41,6 +41,8 @@ test('Windows Chrome: packaged first frame, collision, door, WASD, INTERACT, mis
  await page.locator('#scene-start').click();await expect.poll(async()=>(await diagnostics(page)).pointerLocked,{timeout:15000}).toBe(true);
  await expect.poll(async()=>(await diagnostics(page)).keyboardCaptured,{timeout:15000}).toBe(true);
  expect((await diagnostics(page)).fullscreen).toBe(true);
+ await expect(page.locator('#onboarding-hint')).toContainText('WASD 이동 · 마우스 시점');
+ await expect(page.locator('#onboarding-goal')).toContainText('관제 / 분석 PC · E');
  await page.keyboard.down('ControlLeft');
  await expect.poll(async()=>(await diagnostics(page)).crouched).toBe(true);
  await expect.poll(async()=>(await diagnostics(page)).position[1]).toBeLessThan(1.05);
@@ -63,6 +65,7 @@ test('Windows Chrome: packaged first frame, collision, door, WASD, INTERACT, mis
  await walk(page,'KeyW',{axis:'z',lt:6.5});await walkTo(page,-3.4,3.2);await aim(page,-5.2,1.25,2.85);
  await expect.poll(async()=>(await diagnostics(page)).target,{timeout:15000}).toBe('INTERACT_AdminPC');
  await expect(page.locator('#interaction-prompt')).toContainText('E · 조사 승인서 확인 / F · 조사 노트');
+ await expect(page.locator('#interaction-target')).toHaveText('관제 / 분석 PC');
  const beforeTool=(await diagnostics(page)).position;await page.keyboard.press('KeyF');
  await expect(page.locator('#tool-source')).toContainText('현장 조사는 E');await expect(page.locator('#clues')).toContainText('아직 확보한 단서가 없습니다.');
  await page.locator('#tool-close').click();await expect(page.locator('#scene-message')).toContainText('E로 현장 근거');
@@ -71,6 +74,7 @@ test('Windows Chrome: packaged first frame, collision, door, WASD, INTERACT, mis
  await expect(page.locator('#device-observation')).toBeVisible();
  await expect(page.locator('#device-observation-next')).toContainText('F');await expect(page.locator('#onboarding-hint')).toBeHidden();
  await expect(page.locator('#device-observation-text')).toContainText('조사 승인서');
+ await expect(page.locator('#device-observation-record')).toContainText('조사 노트에 기록됨 · 근거 2/2');
  expect((await diagnostics(page)).pointerLocked).toBe(true);expect((await diagnostics(page)).statusPanels).toBe(4);
  expect((await diagnostics(page)).liveScreens).toBeGreaterThan(30);expect((await diagnostics(page)).liveIndicators).toBeGreaterThan(0);
  await expect(page.locator('#hud-stage')).toContainText('근거 2/2');await page.keyboard.press('KeyF');
@@ -78,6 +82,7 @@ test('Windows Chrome: packaged first frame, collision, door, WASD, INTERACT, mis
  for(const command of ['help','inspect approval']){await page.locator('#command').fill(command);await page.locator('#command').press('Enter');await expect(page.locator('#command')).toBeEnabled();}
  await page.locator('#answer-0').check();await page.locator('#verify').click();await expect(page.locator('#next')).toBeVisible();await page.locator('#next').click();
  await expect(page.locator('#hud-title')).toHaveText('노출된 서비스');await expect(page.locator('#save-status')).not.toHaveText('저장 중…');
+ await expect(page.locator('#hud-reason')).toContainText('노출 상태와 서비스 용도');
  const saved=await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY);expect(JSON.parse(saved).game.active).toBe('services');
  await page.locator('#tool-close').click();await page.locator('#world-2d').click();
  await page.reload();await expect(page.locator('#mission-title')).toHaveText('노출된 서비스');expect(await page.evaluate(key=>localStorage.getItem(key),CURRENT_SAVE_KEY)).toBe(saved);

@@ -79,7 +79,7 @@ export class Interaction {
   prompt() {
     if (!this.target) return '';
     const door=this.doors.find(d=>d.object===this.target);
-    return door ? `E · ${door.target===0?'문 열기':'문 닫기'}` : DEVICES[this.target.name]&&this.inspect?`E · ${this.status().devices?.[this.target.name]?.tone==='pending'?'변경 후 상태 재확인':deviceTask(this.mission(),this.target.name)} / F · ${deviceTool(this.mission(),this.target.name).label}`:`E · ${this.target.userData.label}`;
+    return door ? `E · ${door.target===0?'문 열기':'문 닫기'}` : DEVICES[this.target.name]&&this.inspect?`E · ${this.status().devices?.[this.target.name]?.tone==='pending'?'변경 결과 재확인':deviceTask(this.mission(),this.target.name)} / F · ${deviceTool(this.mission(),this.target.name).label}`:`E · ${this.target.userData.label}`;
   }
   get boxes() { return this.doors.map(d=>d.box); }
 }

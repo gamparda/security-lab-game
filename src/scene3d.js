@@ -503,7 +503,10 @@ function animate(time) {
   if(player.controls.isLocked)updateWayfinding(time);
   $('onboarding-hint').hidden=!player.controls.isLocked||time>=onboardingUntil;
   const prompt = player.controls.isLocked ? interaction.prompt() : '';
-  $('interaction-prompt').textContent = prompt;
+  const target=interaction.target;
+  $('interaction-target').textContent=DEVICES[target?.name]?.label??target?.userData.label??'';
+  $('interaction-action').textContent = prompt;
+  $('interaction-prompt').dataset.tone=mission?.devices?.[target?.name]?.tone??'neutral';
   $('interaction-prompt').hidden = !prompt;
   $('crosshair').classList.toggle('target', Boolean(prompt));
   $('device-observation').hidden=!deviceObservation||!player.controls.isLocked||interaction.target?.name!==deviceObservation.device;
@@ -560,6 +563,10 @@ export function init3D() {
       $('hud-title').textContent = status.title;
       $('hud-objective').textContent = status.objective;
       $('hud-action').textContent=status.worldAction;
+      $('hud-reason').textContent=status.worldReason;
+      $('hud-reason').hidden=!status.worldReason;
+      const goal=DEVICES[status.objectiveDevice];
+      $('onboarding-goal').textContent=goal?`지금 목표 · ${goal.label} · ${['tool','verify'].includes(status.actionMode)?'F':'E'}`:'';
       wayfindingAt=0;
       if(!status.objectiveDevice)$('hud-location').textContent='';
       if(camera&&worldStatus)updateWayfinding(performance.now());
@@ -577,7 +584,7 @@ export function init3D() {
       $('device-observation-status').textContent=result.status??'조사 안내';
       $('device-observation-text').textContent=result.findings?.join('\n')??result.text;
       $('device-observation-next').textContent=result.next?'다음 · '+result.next:'';
-      $('device-observation-record').textContent=result.recorded?'현장 단서 → 조사 노트에 기록됨':'현장 단서 추가 없음';
+      $('device-observation-record').textContent=result.recorded?`현장 단서 → 조사 노트에 기록됨 · 근거 ${result.evidenceFound}/${result.evidenceTotal}`:'현장 단서 추가 없음';
       onboardingUntil=0;$('onboarding-hint').hidden=true;
       $('device-observation').dataset.tone=result.tone;
     });
