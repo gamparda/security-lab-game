@@ -11,6 +11,7 @@ var startup_usec = Time.get_ticks_usec()
 var loaded_ms = 0.0
 var qa_mode = false
 var settings: LabSettings
+var bindings = LabInputBindings.new()
 
 func _ready():
 	for argument in OS.get_cmdline_user_args():
@@ -85,13 +86,11 @@ func import_progress(path: String):
 	else: ui.toast.text = "가져오기 실패 · " + saves.error_message
 
 func setup_input():
-	var mapping = {"forward":[KEY_W],"back":[KEY_S],"left":[KEY_A],"right":[KEY_D],"sprint":[KEY_SHIFT],"crouch":[KEY_CTRL,KEY_C],"jump":[KEY_SPACE],"inspect":[KEY_E],"tool":[KEY_F],"pause":[KEY_ESCAPE]}
-	for action in mapping:
-		if not InputMap.has_action(action): InputMap.add_action(action)
-		for key in mapping[action]:
-			var event = InputEventKey.new()
-			event.physical_keycode = key
-			InputMap.action_add_event(action,event)
+	if qa_mode: bindings.path = "user://qa/input_bindings.json"
+	DirAccess.make_dir_recursive_absolute(bindings.path.get_base_dir())
+	bindings.load_profile()
+	# Existing QA uses default physical keys and never reads a user's profile.
+	if qa_mode: bindings.bindings = LabInputBindings.defaults(); bindings.apply()
 
 func _notification(what):
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and missions != null:

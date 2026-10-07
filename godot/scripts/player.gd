@@ -9,6 +9,7 @@ var ray: RayCast3D
 var shape: CollisionShape3D
 var target: Node
 var enabled = false
+var settings_input_blocked = false
 var crouched = false
 var sensitivity = 0.0018
 var body_height = 1.8
@@ -45,10 +46,11 @@ func set_enabled(value: bool):
 	if not value: velocity = Vector3.ZERO
 
 func _unhandled_input(event):
+	if settings_input_blocked: return
 	if event.is_action_pressed("pause"):
 		pause_requested.emit()
 		get_viewport().set_input_as_handled()
-	if not enabled: return
+	if not enabled or settings_input_blocked: return
 	if event is InputEventMouseMotion:
 		rotate_y(-event.relative.x * sensitivity)
 		camera.rotation.x = clampf(camera.rotation.x - event.relative.y * sensitivity, -1.42, 1.42)
@@ -59,7 +61,7 @@ func _physics_process(delta):
 	ray.force_raycast_update()
 	target = ray.get_collider() if ray.is_colliding() else null
 	if target != null and not target.has_method("get_interaction_prompt"): target = null
-	if not enabled: return
+	if not enabled or settings_input_blocked: velocity = Vector3.ZERO; return
 	var wants_crouch = Input.is_action_pressed("crouch")
 	if crouched and not wants_crouch:
 		var query = PhysicsShapeQueryParameters3D.new()

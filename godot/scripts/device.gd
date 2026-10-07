@@ -34,7 +34,7 @@ func setup(id: String, manager: LabMissions, box: AABB):
 
 func update_placard():
 	var status = missions.device_status(device_id)
-	placard.text = display_name + "\n" + ("다음 · " + status.action + "\n" if status.objective else "") + status.text
+	placard.text = LabInputBindings.hint(display_name + "\n" + ("다음 · " + status.action + "\n" if status.objective else "") + status.text)
 	placard.modulate = LabUI.STATUS_COLORS[status.tone]
 	placard.outline_size = 13 if status.objective else 10
 

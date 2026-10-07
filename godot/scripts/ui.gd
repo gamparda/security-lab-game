@@ -44,6 +44,9 @@ var current_tab = "Notes"
 var results_text: RichTextLabel
 var status = "새 조사"
 var toast: Label
+var onboarding_keys: Label
+var onboarding_tool_keys: Label
+var resume_button: Button
 
 func setup(manager: LabMissions, actor: LabPlayer, load_status: String):
 	missions = manager
@@ -137,8 +140,9 @@ func setup(manager: LabMissions, actor: LabPlayer, load_status: String):
 	root.add_child(onboarding)
 	var onboarding_body = VBoxContainer.new()
 	onboarding.add_child(onboarding_body)
-	wrapped_label(onboarding_body,"WASD 이동 · 마우스 시점\nE · 현장 근거 조사 / F · 상세 도구",17,380)
-	wrapped_label(onboarding_body,"F로 열기만 하면 현장 단서는 기록되지 않습니다.",15,380).modulate = STATUS_COLORS.neutral
+	onboarding_keys = wrapped_label(onboarding_body,"",17,380)
+	onboarding_tool_keys = wrapped_label(onboarding_body,"",15,380)
+	onboarding_tool_keys.modulate = STATUS_COLORS.neutral
 	onboarding_goal = wrapped_label(onboarding_body,"",16,380)
 	onboarding.hide()
 	toast = label(root,"",16)
@@ -159,7 +163,7 @@ func setup(manager: LabMissions, actor: LabPlayer, load_status: String):
 	panel_content.add_child(heading)
 	var logo = label(heading,"SECURITY LAB  /  NATIVE",25)
 	logo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button(heading,"탐색 계속 · Esc",close_tool)
+	resume_button = button(heading,"",close_tool)
 	tool_source = wrapped_label(panel_content,"",16,0)
 	tool_source.modulate = STATUS_COLORS.neutral
 	recheck_notice = wrapped_label(panel_content,"",17,0)
@@ -220,7 +224,14 @@ func setup(manager: LabMissions, actor: LabPlayer, load_status: String):
 	missions.observation.connect(show_observation)
 	refresh()
 	open_tool("Notes")
-	toast.text = status + "  · WASD 이동 / 마우스 시점 / Shift 달리기 / Ctrl·C 앉기 / Space 점프 / E 조사 / F 도구"
+	refresh_input_hints()
+	toast.text = status + "  · " + LabInputBindings.hint("WASD 이동 / 마우스 시점 / Shift 달리기 / Ctrl·C 앉기 / Space 점프 / E 조사 / F 도구")
+
+func refresh_input_hints():
+	onboarding_keys.text = LabInputBindings.hint("WASD 이동 · 마우스 시점\nE · 현장 근거 조사 / F · 상세 도구")
+	onboarding_tool_keys.text = LabInputBindings.hint("F로 열기만 하면 현장 단서는 기록되지 않습니다.")
+	resume_button.text = "탐색 계속 · "+LabInputBindings.key_names("pause")
+	refresh()
 
 func tab_body(name: String) -> VBoxContainer:
 	return tabs.get_node(name+"/Body")
@@ -256,22 +267,22 @@ func refresh():
 	var m = missions.mission()
 	var p = missions.progress()
 	title.text = "%02d / 04   %s" % [missions.state.active+1,m.title]
-	objective.text = "관제 PC에서 조사 권한을 확인하고 허용된 범위를 선택하세요." if m.id == "tutorial" else m.objective
+	objective.text = LabInputBindings.hint("관제 PC에서 조사 권한을 확인하고 허용된 범위를 선택하세요." if m.id == "tutorial" else m.objective)
 	detail.text = "%s  ·  근거 %d/%d  ·  %d점" % [missions.stage(), m.evidence.filter(func(key): return key in p.clues).size(),m.evidence.size(),missions.score()]
 	var action = missions.action()
-	next_action.text = action.text
-	action_reason.text = action.reason
+	next_action.text = LabInputBindings.hint(action.text)
+	action_reason.text = LabInputBindings.hint(action.reason)
 	detail.modulate = STATUS_COLORS.pending if action.mode == "recheck" else STATUS_COLORS.normal if p.verified else STATUS_COLORS.neutral
 	recheck_notice.visible = action.mode == "recheck"
-	recheck_notice.text = action.text + " F로 도구를 열어도 현장 재확인은 완료되지 않습니다." if action.mode == "recheck" else ""
-	onboarding_goal.text = "지금 목표 · " + definitions_label(action.device) + " · " + ("F" if action.mode in ["tool","verify"] else "E") if action.device != "" else ""
-	tool_source.text = (missions.definitions.devices[tool_device].zone + " / " + definitions_label(tool_device) + " · " if tool_device != "" else "조사 노트 · ") + "F 상세 도구 / 현장 조사는 E · 닫으면 같은 위치로 복귀"
+	recheck_notice.text = LabInputBindings.hint(action.text + " F로 도구를 열어도 현장 재확인은 완료되지 않습니다.") if action.mode == "recheck" else ""
+	onboarding_goal.text = "지금 목표 · " + definitions_label(action.device) + " · " + LabInputBindings.key_names("tool" if action.mode in ["tool","verify"] else "inspect") if action.device != "" else ""
+	tool_source.text = LabInputBindings.hint((missions.definitions.devices[tool_device].zone + " / " + definitions_label(tool_device) + " · " if tool_device != "" else "조사 노트 · ") + "F 상세 도구 / 현장 조사는 E · 닫으면 같은 위치로 복귀")
 	clear_children(answers)
 	for i in range(m.answers.size()):
 		var option = button(answers,("✓  " if p.answer == i else "○  ") + m.answers[i],func(): missions.apply_answer(i))
 		option.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		option.tooltip_text = m.answerFeedback[i] if m.evidence.all(func(key): return key in p.clues) else m.investigation
-	evidence.text = m.objective + "\n\n" + "\n".join(p.clues.map(func(key): return "• " + m.clues[key].label))
+	evidence.text = LabInputBindings.hint(m.objective + "\n\n" + "\n".join(p.clues.map(func(key): return "• " + m.clues[key].label)))
 	results_text.text = (m.answerFeedback[p.answer] if p.answer != null and m.evidence.all(func(key): return key in p.clues) else m.investigation) + "\n\n" + "\n".join(p.checks.map(func(check): return ("통과 · " if check.passed else "미충족 · ") + check.label))
 	var quick = tab_body("Terminal").get_node("QuickCommands")
 	clear_children(quick)
@@ -284,7 +295,7 @@ func refresh():
 	for key in ["before","after"]:
 		var snapshot = p.observations[key]
 		label(comparison,("변경 전" if key == "before" else "변경 후") + "\n" + (JSON.stringify(snapshot,"  ") if snapshot != null else "아직 관찰하지 않았습니다."),18)
-	label(comparison,"설정 변경 후 E 현장 재확인: " + ("완료" if p.get("spatial",{}).get("rechecked",false) else "필요" if p.observations.changed else "설정 변경 전"))
+	label(comparison,LabInputBindings.hint("설정 변경 후 E 현장 재확인: " + ("완료" if p.get("spatial",{}).get("rechecked",false) else "필요" if p.observations.changed else "설정 변경 전")))
 	observation_result.clear()
 	observation_panel.hide()
 
@@ -375,9 +386,9 @@ func show_observation(result: Dictionary):
 	observation_title.text = result.label
 	observation_status.text = result.status
 	observation_status.modulate = STATUS_COLORS[result.tone]
-	observation_text.text = "\n".join(result.findings)
+	observation_text.text = LabInputBindings.hint("\n".join(result.findings))
 	observation_record.text = "현장 단서 → 조사 노트에 기록됨 · 근거 %d/%d" % [result.evidenceFound,result.evidenceTotal] if result.recorded else "현장 단서 추가 없음"
-	observation_next.text = "다음 · " + result.next
+	observation_next.text = "다음 · " + LabInputBindings.hint(result.next)
 	onboarding_remaining = 0
 	onboarding.hide()
 
@@ -394,7 +405,7 @@ func show_import():
 func _process(delta):
 	if player == null or missions == null: return
 	if not modal_open:
-		prompt.text = player.target.get_interaction_prompt() if player.target != null else "WASD 이동  ·  E 현장 조사  ·  F 상세 도구  ·  Esc 노트"
+		prompt.text = LabInputBindings.hint(player.target.get_interaction_prompt() if player.target != null else "WASD 이동  ·  E 현장 조사  ·  F 상세 도구  ·  Esc 노트")
 		prompt.modulate = STATUS_COLORS[missions.device_status(player.target.device_id).tone] if player.target is LabDevice else Color(.90,.94,.95)
 		var action = missions.action()
 		var direction = ""

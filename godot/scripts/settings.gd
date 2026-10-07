@@ -5,6 +5,14 @@ var values = {"resolution":0,"fullscreen":false,"vsync":true,"quality":1,"master
 var game: Node
 var panel: Window
 var path = "user://settings.json"
+var binding_draft: Dictionary = {}
+var binding_buttons: Dictionary = {}
+var binding_status: Label
+var capture_action = ""
+var capture_release_key = 0
+var binding_cancel: Button
+var binding_reset: Button
+var apply_button: Button
 
 func setup(root: Node):
 	game = root
@@ -25,6 +33,9 @@ func setup(root: Node):
 		AudioServer.set_bus_send(AudioServer.bus_count-1,"Master")
 	apply()
 	game.ui.settings_requested.connect(show_menu)
+	game.bindings.changed.connect(func():
+		game.ui.refresh_input_hints()
+		for device in game.world.devices.values(): device.update_placard())
 
 func apply():
 	if DisplayServer.get_name() != "headless":
@@ -56,13 +67,21 @@ func apply():
 
 func show_menu():
 	if panel != null: panel.popup_centered(); return
+	game.player.settings_input_blocked = true
+	game.player.velocity = Vector3.ZERO
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	binding_draft = game.bindings.bindings.duplicate(true)
+	binding_buttons.clear()
 	panel = Window.new()
 	panel.title = "환경 설정"
 	panel.size = Vector2i(690,630)
 	panel.transient = true
 	panel.exclusive = true
 	panel.theme = game.ui.root.theme
-	panel.close_requested.connect(func(): panel.queue_free(); panel = null)
+	panel.close_requested.connect(close_menu)
+	panel.window_input.connect(window_input)
+	panel.focus_exited.connect(func(): cancel_capture())
+	panel.tree_exiting.connect(func(): game.player.settings_input_blocked = false)
 	game.ui.root.add_child(panel)
 	var margin = MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -74,6 +93,7 @@ func show_menu():
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation",14)
 	scroll.add_child(body)
+	key_controls(body)
 	game.ui.label(body,"디스플레이 / 소리 / 조작",25)
 	var resolution = OptionButton.new()
 	for text in ["1600 × 900","1280 × 720","1920 × 1080"]: resolution.add_item(text)
@@ -95,13 +115,98 @@ func show_menu():
 	var sfx = slider(body,"환경음 / 효과음",values.sfx,0,1,.05)
 	var sensitivity = slider(body,"마우스 감도",values.sensitivity,.0005,.004,.0001)
 	var fov = slider(body,"시야각",values.fov,60,90,1)
-	game.ui.button(body,"적용하고 저장",func():
+	apply_button = game.ui.button(body,"적용하고 저장",func():
+		var result = game.bindings.save_profile(binding_draft)
+		if not result.ok: binding_status.text = result.message; return
 		values = {"resolution":resolution.selected,"fullscreen":fullscreen.button_pressed,"vsync":vsync.button_pressed,"quality":quality.selected,"master":master.value,"sfx":sfx.value,"sensitivity":sensitivity.value,"fov":fov.value}
 		apply()
 		var file = FileAccess.open(path,FileAccess.WRITE)
-		if file != null: file.store_string(JSON.stringify(values,"\t")); file.close()
-		panel.queue_free(); panel = null)
+		if file == null: binding_status.text = "조작키는 저장했습니다. 화면·소리 설정은 저장하지 못했습니다."; return
+		file.store_string(JSON.stringify(values,"\t")); file.close()
+		close_menu())
 	panel.popup_centered()
+
+func key_controls(body: VBoxContainer):
+	game.ui.label(body,"조작키",24)
+	game.ui.wrapped_label(body,"변경 버튼을 누른 뒤 새 키 하나를 누르세요. 해당 액션의 기존 키를 교체합니다. Esc도 할당할 수 있으며 입력 대기는 아래 취소 버튼으로 끝냅니다. 변경 후 ‘적용하고 저장’을 누르세요.",16,600)
+	for action in LabInputBindings.ACTIONS:
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation",16)
+		body.add_child(row)
+		var label = game.ui.label(row,action.label,18)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var button = game.ui.button(row,LabInputBindings.names(binding_draft[action.id]),func(): begin_capture(action.id))
+		button.custom_minimum_size.x = 230
+		binding_buttons[action.id] = button
+	binding_status = game.ui.wrapped_label(body,game.bindings.load_status,16,600)
+	binding_status.custom_minimum_size.y = 42
+	binding_cancel = game.ui.button(body,"입력 대기 취소",cancel_capture)
+	binding_cancel.disabled = true
+	binding_reset = game.ui.button(body,"조작키 기본값으로 복원",func():
+		cancel_capture()
+		binding_draft = LabInputBindings.defaults()
+		refresh_bindings()
+		binding_status.text = "기본 키로 복원했습니다. 적용하고 저장을 눌러 확정하세요.")
+
+func refresh_bindings():
+	for id in binding_buttons:
+		binding_buttons[id].text = "새 키를 누르세요…" if id == capture_action else LabInputBindings.names(binding_draft[id])
+		binding_buttons[id].disabled = not capture_action.is_empty()
+	if binding_cancel != null: binding_cancel.disabled = capture_action.is_empty()
+	if binding_reset != null: binding_reset.disabled = not capture_action.is_empty()
+	if apply_button != null: apply_button.disabled = not capture_action.is_empty()
+
+func begin_capture(action: String):
+	if not binding_draft.has(action): return
+	capture_action = action
+	capture_release_key = 0
+	var focused = panel.gui_get_focus_owner()
+	if focused != null: focused.release_focus()
+	binding_status.text = LabInputBindings.label_for(action)+" · 새 키를 누르세요. Esc는 취소가 아니라 할당할 키입니다."
+	refresh_bindings()
+
+func cancel_capture():
+	capture_action = ""
+	if is_instance_valid(binding_status): binding_status.text = "입력 대기를 취소했습니다. 변경 사항은 아직 적용되지 않았습니다."
+	refresh_bindings()
+
+func window_input(event: InputEvent):
+	if not event is InputEventKey: return
+	if capture_release_key != 0 and event.physical_keycode == capture_release_key:
+		panel.set_input_as_handled()
+		if not event.pressed: capture_release_key = 0
+		return
+	if not capture_action.is_empty():
+		panel.set_input_as_handled()
+		if not event.pressed or event.echo: return
+		var key = event.physical_keycode
+		if (event.ctrl_pressed and key != KEY_CTRL) or (event.shift_pressed and key != KEY_SHIFT) or (event.alt_pressed and key != KEY_ALT) or event.meta_pressed:
+			binding_status.text = "키 조합은 지원하지 않습니다. 다른 키를 놓고 키 하나만 누르세요."
+			return
+		var result = game.bindings.replace_key(binding_draft,capture_action,key)
+		if not result.ok: binding_status.text = result.message; return
+		binding_draft = result.bindings
+		binding_status.text = LabInputBindings.label_for(capture_action)+" → "+LabInputBindings.names([key])+" · 적용하고 저장을 눌러 확정하세요."
+		capture_action = ""
+		capture_release_key = key
+		refresh_bindings()
+		return
+	# The settings window owns its UI escape shortcut. Gameplay pause is blocked
+	# for the whole window lifetime; Escape capture takes precedence above.
+	if event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+		panel.set_input_as_handled()
+		close_menu()
+
+func close_menu():
+	if panel == null: return
+	capture_action = ""
+	capture_release_key = 0
+	for action in LabInputBindings.ACTIONS: Input.action_release(action.id)
+	panel.hide()
+	panel.queue_free()
+	panel = null
+	game.player.settings_input_blocked = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if game.player.enabled else Input.MOUSE_MODE_VISIBLE
 
 func slider(body: Node, title: String, value: float, low: float, high: float, step: float) -> HSlider:
 	game.ui.label(body,title,17)
